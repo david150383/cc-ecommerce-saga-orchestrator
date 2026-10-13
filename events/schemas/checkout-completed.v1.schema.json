@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.ecommerce.local/saga-orchestrator/checkout-completed.v1.schema.json",
+  "title": "CheckoutCompleted v1",
+  "description": "The checkout saga reached COMPLETED.",
+  "x-message-kind": "event",
+  "x-producer": "ecommerce-saga-orchestrator",
+  "x-consumers": [],
+  "x-channel": "SNS saga-events",
+  "$ref": "envelope.v1.schema.json",
+  "properties": {
+    "messageKind": {
+      "const": "event"
+    },
+    "messageType": {
+      "const": "CheckoutCompleted"
+    },
+    "messageVersion": {
+      "const": 1
+    },
+    "producer": {
+      "const": "ecommerce-saga-orchestrator"
+    },
+    "payload": {
+      "type": "object",
+      "required": [
+        "orderId",
+        "customerId"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "orderId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "customerId": {
+          "type": "string",
+          "format": "uuid"
+        }
+      }
+    }
+  }
+}

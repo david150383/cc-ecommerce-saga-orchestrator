@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.ecommerce.local/saga-orchestrator/envelope.v1.schema.json",
+  "title": "Message envelope v1",
+  "description": "Common envelope for every event and command. COPIED into each producing repository until ecommerce-contracts exists (Phase 6). Keep copies identical by hand.",
+  "type": "object",
+  "required": [
+    "messageId",
+    "messageKind",
+    "messageType",
+    "messageVersion",
+    "producer",
+    "occurredAt",
+    "correlationId",
+    "causationId",
+    "sagaId",
+    "idempotencyKey",
+    "payload"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "messageId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique per message; consumers dedupe on it. Reused when the same message is re-sent."
+    },
+    "messageKind": {
+      "enum": [
+        "event",
+        "command"
+      ]
+    },
+    "messageType": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Za-z0-9]+$"
+    },
+    "messageVersion": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "producer": {
+      "type": "string",
+      "pattern": "^ecommerce-[a-z-]+$"
+    },
+    "occurredAt": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$",
+      "description": "UTC, RFC 3339."
+    },
+    "correlationId": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 128
+    },
+    "causationId": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 128
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "sagaId": {
+      "anyOf": [
+        {
+          "type": "string",
+          "format": "uuid"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "idempotencyKey": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "payload": {
+      "type": "object"
+    }
+  },
+  "if": {
+    "properties": {
+      "messageKind": {
+        "const": "command"
+      }
+    },
+    "required": [
+      "messageKind"
+    ]
+  },
+  "then": {
+    "properties": {
+      "idempotencyKey": {
+        "type": "string"
+      }
+    }
+  }
+}

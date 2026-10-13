@@ -1,0 +1,19 @@
+# Standalone dependencies for working on this service alone.
+name: ecommerce-saga-orchestrator
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: saga_svc
+      POSTGRES_PASSWORD: saga_local_pw
+      POSTGRES_DB: saga_db
+    ports: ["5447:5432"]
+    volumes: ["saga-pg:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U saga_svc -d saga_db"]
+      interval: 5s
+      retries: 20
+
+volumes:
+  saga-pg:

@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.ecommerce.local/saga-orchestrator/checkout-failed.v1.schema.json",
+  "title": "CheckoutFailed v1",
+  "description": "The checkout saga ended in CANCELLED or FAILED after compensation completed.",
+  "x-message-kind": "event",
+  "x-producer": "ecommerce-saga-orchestrator",
+  "x-consumers": [],
+  "x-channel": "SNS saga-events",
+  "$ref": "envelope.v1.schema.json",
+  "properties": {
+    "messageKind": {
+      "const": "event"
+    },
+    "messageType": {
+      "const": "CheckoutFailed"
+    },
+    "messageVersion": {
+      "const": 1
+    },
+    "producer": {
+      "const": "ecommerce-saga-orchestrator"
+    },
+    "payload": {
+      "type": "object",
+      "required": [
+        "orderId",
+        "customerId",
+        "finalState",
+        "reason"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "orderId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "customerId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "finalState": {
+          "enum": [
+            "CANCELLED",
+            "FAILED"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 200
+        }
+      }
+    }
+  }
+}

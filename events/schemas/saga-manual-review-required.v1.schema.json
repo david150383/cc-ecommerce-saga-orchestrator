@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.ecommerce.local/saga-orchestrator/saga-manual-review-required.v1.schema.json",
+  "title": "SagaManualReviewRequired v1",
+  "description": "Automatic compensation could not be verified; an operator must intervene.",
+  "x-message-kind": "event",
+  "x-producer": "ecommerce-saga-orchestrator",
+  "x-consumers": [],
+  "x-channel": "SNS saga-events",
+  "$ref": "envelope.v1.schema.json",
+  "properties": {
+    "messageKind": {
+      "const": "event"
+    },
+    "messageType": {
+      "const": "SagaManualReviewRequired"
+    },
+    "messageVersion": {
+      "const": 1
+    },
+    "producer": {
+      "const": "ecommerce-saga-orchestrator"
+    },
+    "payload": {
+      "type": "object",
+      "required": [
+        "orderId",
+        "stateBeforeReview",
+        "reason"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "orderId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "stateBeforeReview": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 500
+        }
+      }
+    }
+  }
+}
