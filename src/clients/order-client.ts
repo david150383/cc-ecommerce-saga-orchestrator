@@ -96,7 +96,8 @@ export class HttpPaymentGateway implements PaymentGateway {
       "ecommerce-payment-service",
       `${this.baseUrl}/api/v1/payments/intent`,
       // No amount: the Payment Service reads the authoritative total from the Order Service.
-      { orderId, returnUrl },
+      // sagaId lets its payment events route straight to this saga.
+      { orderId, returnUrl, sagaId },
       `${sagaId}:payment-intent`,
       this.timeoutMs,
       (json) => {
