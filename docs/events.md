@@ -18,12 +18,12 @@ saga sends schemas defined in other repositories.
 | `InventoryReservationRequested` | `inventory-commands` | ecommerce-inventory-service |
 | `InventoryReservationConfirmRequested` | `inventory-commands` | ecommerce-inventory-service |
 | `InventoryReservationReleaseRequested` | `inventory-commands` | ecommerce-inventory-service |
-| `OrderStatusTransitionRequested` | `order-commands` | ecommerce-order-service |
+| `OrderStatusTransitionRequested` | `order-commands.fifo` (MessageGroupId = orderId) | ecommerce-order-service |
 | `RefundRequested` | `payment-commands` | ecommerce-payment-service |
 | `NotificationRequested` | `notification-commands` | ecommerce-notification-service |
 
-Idempotency key format: `{sagaId}:{step}:{attempt-independent-step-key}`, e.g.
-`0192...:reserve-inventory`. **The same key is reused on every retry of that step.** That is
+Idempotency key format: `{sagaId}:{step}`, e.g. `0192…:reserve`, `0192…:order:CONFIRMED`,
+`0192…:refund`. **The same key is reused on every retry of that step.** That is
 what lets the receiver recognise a retry.
 
 ## Consumed events (SQS `saga-inbox`)
@@ -32,6 +32,6 @@ what lets the receiver recognise a retry.
 `InventoryReservationReleased`, `PaymentSucceeded`, `PaymentFailed`, `RefundSucceeded`,
 `RefundFailed`, `OrderConfirmed`, `OrderCancelled`.
 
-Correlation: every message the saga sends carries `sagaId`, and every result event echoes it
-back. An event for an unknown or already-terminal saga is acknowledged and logged. A late
+Correlation: every message the saga sends carries `sagaId`, and every result event echoes it back (events
+without a known sagaId are matched by `payload.orderId`). An event for an unknown or already-terminal saga is acknowledged and logged. A late
 `PaymentSucceeded` for a CANCELLED saga triggers `RefundRequested`.

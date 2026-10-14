@@ -7,19 +7,24 @@ export interface FieldError {
 }
 
 export class HttpProblem extends Error {
+  readonly extra: Record<string, unknown> | undefined;
+
   constructor(
     readonly status: number,
     readonly code: string,
     readonly title: string,
     readonly detail?: string,
     readonly errors?: FieldError[],
+    options?: { cause?: unknown; extra?: Record<string, unknown> },
   ) {
-    super(title);
+    super(title, options?.cause !== undefined ? { cause: options.cause } : undefined);
+    this.extra = options?.extra;
     this.name = "HttpProblem";
   }
 }
 
 export interface ProblemBody {
+  [extra: string]: unknown;
   type: string;
   title: string;
   status: number;
@@ -40,5 +45,6 @@ export function toProblemBody(problem: HttpProblem, instance: string, correlatio
     instance,
     ...(correlationId !== undefined && { correlationId }),
     ...(problem.errors !== undefined && { errors: problem.errors }),
+    ...problem.extra,
   };
 }

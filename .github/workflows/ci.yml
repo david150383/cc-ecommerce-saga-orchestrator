@@ -15,6 +15,28 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: saga_svc
+          POSTGRES_PASSWORD: saga_local_pw
+          POSTGRES_DB: saga_db
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U saga_svc -d saga_db"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+      # Local AWS emulator for the SNS/SQS tests.
+      floci:
+        image: floci/floci:2.0.1
+        ports: ["4566:4566"]
+        options: >-
+          --health-cmd "curl -fs http://localhost:4566/_floci/health"
+          --health-interval 5s --health-timeout 3s --health-retries 30
+    env:
+      DATABASE_URL: postgresql://saga_svc:saga_local_pw@localhost:5432/saga_db
+      TEST_DATABASE_URL: postgresql://saga_svc:saga_local_pw@localhost:5432/saga_test
+      TEST_AWS_ENDPOINT_URL: http://localhost:4566
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -24,7 +46,10 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
-      - run: npm test
+      - name: Migrations round-trip (up, down, up)
+        run: npm run db:migrate && npm run db:rollback && npm run db:migrate
+      - name: Unit + integration tests (state machine, flows, recovery, SNS/SQS against Floci)
+        run: npm test
       - run: npm run build
 
   docker:
@@ -33,11 +58,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
-      - name: Build image (not pushed until Phase 7)
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: false
-          tags: ecommerce-saga-orchestrator:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: Build runtime and migrate images (not pushed until Phase 7)
+        run: |
+          docker buildx build --target runtime -t ecommerce-saga-orchestrator:${{ github.sha }} --load .
+          docker buildx build --target migrate -t ecommerce-saga-orchestrator-migrate:${{ github.sha }} --load .

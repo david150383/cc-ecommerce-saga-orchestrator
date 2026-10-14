@@ -4,7 +4,7 @@ Coordinates checkout across Order, Inventory and Payment. It persists every saga
 
 | | |
 |---|---|
-| Stack | Node.js 24, Express 5, TypeScript 5.9, PostgreSQL 17, AWS SDK v3 (SNS/SQS) *(Phase 3)* |
+| Stack | Node.js 24, Express 5, TypeScript 5.9, PostgreSQL 17 (`pg`, node-pg-migrate SQL migrations), AWS SDK v3 (SNS/SQS), jose 6, Zod 4 |
 | Port | 4007 |
 | Database | `saga_db` (PostgreSQL), owned exclusively by this service |
 | API docs | [docs/api.md](docs/api.md) |
@@ -15,7 +15,7 @@ Coordinates checkout across Order, Inventory and Payment. It persists every saga
 | Phase | Done |
 |---|---|
 | 1: skeleton | ✅ app factory, zod-validated config, pino logging with secret redaction, correlation IDs, RFC 9457 errors, health/readiness, graceful shutdown, Dockerfile, CI, message schemas with validated examples |
-| 3: features | ⏳ see [docs/api.md](docs/api.md) |
+| 3: features | ✅ Durable checkout saga: pure state machine, transactional outbox, inbox consumer with dedupe, timeouts/retries/compensation, crash recovery, manual review, admin API. See [docs/saga.md](docs/saga.md) |
 
 ## Run locally
 
@@ -26,7 +26,9 @@ npm run dev            # http://localhost:4007/health/live
 npm test
 ```
 
-Dependencies: `docker compose up -d` here (standalone), or in `ecommerce-infrastructure` (whole platform).
+Dependencies: `docker compose up -d` here (standalone Postgres on 5447), or in `ecommerce-infrastructure`
+(whole platform, Postgres on 5432 + Floci on 4566). `npm run db:migrate` applies the SQL migrations in
+`migrations/`. `npm test` needs Postgres and Floci.
 
 ## Scripts
 

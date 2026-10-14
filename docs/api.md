@@ -2,7 +2,8 @@
 
 Base URL (local): `http://localhost:4007`. Conventions: `ecommerce-infrastructure/docs/architecture/conventions.md`.
 Workflow design: `ecommerce-infrastructure/docs/architecture/checkout-saga.md`.
-Status: **documented, not yet implemented** (Phase 3). Implemented today: health endpoints only.
+Status: **implemented** (Phase 3). Implementation notes: [saga.md](saga.md). Machine-readable spec:
+[`openapi/openapi.json`](../openapi/openapi.json), served at `/openapi.json`, Swagger UI at `/docs`.
 
 ## Endpoints
 
@@ -39,4 +40,6 @@ with backoff) until `checkoutUrl` appears or a terminal state is reached.
   "failureReason": null }                    // e.g. "OUT_OF_STOCK", "PAYMENT_FAILED"
 ```
 Customer-facing statuses deliberately collapse internal saga states (`RESERVING_INVENTORY`,
-`CONFIRMING_ORDER`, ...) so internals can change without breaking the frontend.
+`CONFIRMING_ORDER`, ...) so internals can change without breaking the frontend: `PROCESSING`,
+`AWAITING_PAYMENT`, `COMPLETED`, `CANCELLED`, `FAILED`, and `UNDER_REVIEW` (manual review).
+Other customers' checkouts return 404. Prices and totals in the request are rejected (unknown fields).
