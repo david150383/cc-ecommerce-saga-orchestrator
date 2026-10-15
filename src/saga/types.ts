@@ -28,7 +28,7 @@ export interface CheckoutRequest {
 }
 
 /** Results the saga is still waiting for while compensating. */
-export type Awaited = "InventoryReservationReleased" | "OrderCancelled" | "RefundSucceeded";
+export type Awaited = "InventoryReservationReleased" | "OrderCancelled" | "RefundSucceeded" | "InventoryReturned";
 
 export interface Compensation {
   awaiting: Awaited[];
@@ -42,6 +42,13 @@ export interface Compensation {
   orderRefundPending?: boolean;
   /** Where to go once everything awaited has arrived. */
   then?: "CANCELLED";
+  /**
+   * A paid, completed order is being cancelled (OrderCancellationRequested): the checkout itself
+   * succeeded, so finishing announces no CheckoutFailed, and a payment event can no longer be "late".
+   */
+  afterCompletion?: boolean;
+  /** Once the refund succeeds, put the confirmed stock back on hand (InventoryReturnRequested). */
+  returnStockAfterRefund?: boolean;
 }
 
 export interface Saga {

@@ -29,7 +29,7 @@ export function decide(saga: Saga, input: Input, now: Date, policy: SagaPolicy):
   const d = new Decider(saga, now, policy);
   if (input.kind === "operator-resolved") return d.resolve(input.resolution);
   // A late payment must be refunded whatever happened to the checkout in the meantime.
-  if (input.kind === "event" && input.event.messageType === "PaymentSucceeded" && isAfterCancellation(saga.state)) {
+  if (input.kind === "event" && input.event.messageType === "PaymentSucceeded" && isAfterCancellation(saga.state) && !saga.compensation.afterCompletion) {
     return d.latePayment(input.event.messageId, input.event.payload);
   }
   switch (saga.state) {
@@ -45,6 +45,8 @@ export function decide(saga: Saga, input: Input, now: Date, policy: SagaPolicy):
       return d.confirmingInventory(input);
     case "CONFIRMING_ORDER":
       return d.confirmingOrder(input);
+    case "COMPLETED":
+      return d.completed(input);
     case "CANCELLING":
     case "REFUNDING":
       return d.compensating(input);
@@ -222,11 +224,45 @@ class Decider {
     }
     if (input.kind === "event" && input.event.messageType === "OrderConfirmed") {
       return this.to("COMPLETED", input, {
-        events: [{ messageType: "CheckoutCompleted", payload: { orderId: this.saga.orderId, customerId: this.saga.customerId } }],
+        events: [this.checkoutCompleted()],
         deadline: null,
       });
     }
+    if (input.kind === "event" && input.event.messageType === "OrderCancellationRequested") {
+      // Only a CONFIRMED order can be cancelled this way, so OrderConfirmed is merely still in flight
+      // (events are not ordered): the checkout DID complete. Announce it, then cancel.
+      const cancel = this.cancelPaidOrder(input);
+      return { ...cancel, events: [this.checkoutCompleted(), ...cancel.events] };
+    }
     return this.ignore(input, "waiting for OrderConfirmed");
+  }
+
+  completed(input: Input): Decision {
+    if (input.kind === "event" && input.event.messageType === "OrderCancellationRequested") return this.cancelPaidOrder(input);
+    return this.ignore(input, "checkout completed");
+  }
+
+  /**
+   * The customer (or an admin) cancelled a paid order before it shipped. The Order Service has put it in
+   * CANCELLATION_PENDING. Refund first; only once the money is back is the stock returned, so that a
+   * refund that fails (manual review) leaves a human every option, including shipping after all.
+   */
+  private cancelPaidOrder(input: Input): Decision {
+    const payload = input.kind === "event" ? input.event.payload : {};
+    const refundReason = payload.reason === "ADMIN" ? "ADMIN" : "CUSTOMER_REQUESTED";
+    const compensation: Compensation = {
+      awaiting: ["RefundSucceeded"],
+      refundReason,
+      orderRefundPending: true,
+      returnStockAfterRefund: true,
+      afterCompletion: true,
+      then: "CANCELLED",
+    };
+    return this.to("REFUNDING", input, {
+      patch: { failureReason: `ORDER_CANCELLED:${refundReason}`, compensation },
+      commands: [this.orderTransition("REFUND_PENDING"), this.refund(refundReason)],
+      deadline: at(this.now, this.policy.stepTimeoutMs),
+    });
   }
 
   /** CANCELLING and REFUNDING: tick off awaited results; finish when none are left. */
@@ -243,21 +279,27 @@ class Decider {
     if (type === "RefundFailed") return this.manualReview(input, "refund failed");
     if (!(comp.awaiting as string[]).includes(type)) return this.ignore(input, `not awaiting ${type}`);
 
-    const awaiting = comp.awaiting.filter((a) => a !== type);
+    let next: Compensation = { ...comp, awaiting: comp.awaiting.filter((a) => a !== type) };
     const commands: OutgoingCommand[] = [];
     if (type === "RefundSucceeded" && comp.orderRefundPending) commands.push(this.orderTransition("REFUNDED"));
+    if (type === "RefundSucceeded" && comp.returnStockAfterRefund) {
+      next = { ...next, awaiting: [...next.awaiting, "InventoryReturned"], returnStockAfterRefund: false };
+      commands.push(this.returnInventory());
+    }
+    const awaiting = next.awaiting;
     if (awaiting.length > 0) {
       return this.to(this.saga.state, input, {
-        patch: { compensation: { ...comp, awaiting } },
+        patch: { compensation: next },
         commands,
         deadline: at(this.now, this.policy.stepTimeoutMs),
         keepAttempts: true,
       });
     }
     return this.to("CANCELLED", input, {
-      patch: { compensation: { ...comp, awaiting: [] } },
+      patch: { compensation: next },
       commands,
-      events: [this.checkoutFailed("CANCELLED")],
+      // A cancelled paid order: the checkout had succeeded (CheckoutCompleted was announced).
+      events: comp.afterCompletion ? [] : [this.checkoutFailed("CANCELLED")],
       deadline: null,
     });
   }
@@ -322,6 +364,7 @@ class Decider {
     if (comp.awaiting.includes("InventoryReservationReleased")) commands.push(this.releaseInventory(comp.releaseReason ?? "SAGA_COMPENSATION"));
     if (comp.awaiting.includes("OrderCancelled")) commands.push(this.orderTransition("CANCELLED", undefined, comp.orderCancelReason ?? "SYSTEM"));
     if (comp.awaiting.includes("RefundSucceeded")) commands.push(this.refund(comp.refundReason ?? "OUT_OF_STOCK_AFTER_PAYMENT"));
+    if (comp.awaiting.includes("InventoryReturned")) commands.push(this.returnInventory());
     return commands;
   }
 
@@ -390,6 +433,10 @@ class Decider {
     };
   }
 
+  private checkoutCompleted(): OutgoingEvent {
+    return { messageType: "CheckoutCompleted", payload: { orderId: this.saga.orderId, customerId: this.saga.customerId } };
+  }
+
   private checkoutFailed(finalState: "CANCELLED" | "FAILED", reason = this.saga.failureReason ?? "UNKNOWN"): OutgoingEvent {
     return {
       messageType: "CheckoutFailed",
@@ -434,6 +481,15 @@ class Decider {
       // reservationId may be unknown (timeout before the answer): the Inventory Service then releases by order.
       payload: { orderId: this.saga.orderId, reservationId: this.saga.reservationId, reason },
       idempotencyKey: `${this.saga.id}:release`,
+    };
+  }
+
+  private returnInventory(): OutgoingCommand {
+    return {
+      target: "inventory",
+      messageType: "InventoryReturnRequested",
+      payload: { orderId: this.saga.orderId, reservationId: this.saga.reservationId, reason: "ORDER_CANCELLED" },
+      idempotencyKey: `${this.saga.id}:return`,
     };
   }
 

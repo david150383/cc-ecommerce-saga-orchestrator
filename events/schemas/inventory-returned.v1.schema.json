@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.ecommerce.local/inventory-service/inventory-returned.v1.schema.json",
+  "title": "InventoryReturned v1",
+  "description": "Answer to InventoryReturnRequested. RETURNED: the reservation's stock is back on hand (also re-sent for a duplicate request). NOTHING_TO_RETURN: the reservation was never confirmed, so there was no stock to put back.",
+  "x-message-kind": "event",
+  "x-producer": "ecommerce-inventory-service",
+  "x-consumers": [
+    "ecommerce-saga-orchestrator"
+  ],
+  "x-channel": "SNS inventory-events",
+  "$ref": "../common/envelope.v1.schema.json",
+  "properties": {
+    "messageKind": {
+      "const": "event"
+    },
+    "messageType": {
+      "const": "InventoryReturned"
+    },
+    "messageVersion": {
+      "const": 1
+    },
+    "producer": {
+      "const": "ecommerce-inventory-service"
+    },
+    "payload": {
+      "type": "object",
+      "required": [
+        "orderId",
+        "reservationId",
+        "outcome",
+        "lines"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "orderId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "reservationId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "outcome": {
+          "enum": [
+            "RETURNED",
+            "NOTHING_TO_RETURN"
+          ]
+        },
+        "lines": {
+          "type": "array",
+          "description": "What went back on the shelf (empty when nothing was returned).",
+          "items": {
+            "type": "object",
+            "required": [
+              "sku",
+              "quantity"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "sku": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              },
+              "quantity": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

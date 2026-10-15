@@ -29,6 +29,16 @@ async function toAwaitingPayment() {
   return { ...s, reservationId };
 }
 
+/** Drives a saga to COMPLETED (paid, stock confirmed, order confirmed). */
+async function toCompleted() {
+  const s = await toAwaitingPayment();
+  await ctx.engine.handleEvent(event(s.sagaId, "PaymentSucceeded", { orderId: s.orderId }));
+  await ctx.engine.handleEvent(event(s.sagaId, "InventoryReservationConfirmed", { reservationId: s.reservationId, orderId: s.orderId }));
+  await ctx.engine.handleEvent(event(s.sagaId, "OrderConfirmed", { orderId: s.orderId }));
+  expect((await stateOf(s.sagaId)).state).toBe("COMPLETED");
+  return s;
+}
+
 const status = async (sagaId: string, sub = customerId) =>
   (await request(ctx.app).get(`/api/v1/checkout/${sagaId}`).set(await auth(["customer"], sub))).body;
 
@@ -193,6 +203,50 @@ describe("failure paths", () => {
     expect(resolved.body.saga.state).toBe("RESOLVED");
     expect((await request(ctx.app).post(`/api/v1/admin/sagas/${s.sagaId}/resolve`).set(admin).send({ resolution: "again" })).status).toBe(409);
     expect((await request(ctx.app).get("/api/v1/admin/sagas").set(await auth(["customer"]))).status).toBe(403);
+  });
+});
+
+describe("cancelling a paid order", () => {
+  it("COMPLETED → refund → REFUNDED + stock returned → CANCELLED; every reply routes to the checkout saga", async () => {
+    const s = await toCompleted();
+    const before = (await outbox(s.sagaId)).length;
+    await ctx.engine.handleEvent(event(s.sagaId, "OrderCancellationRequested", { orderId: s.orderId, customerId, previousStatus: "CONFIRMED", reason: "CUSTOMER_REQUESTED" }));
+    expect((await stateOf(s.sagaId)).state).toBe("REFUNDING");
+    let sent = (await outbox(s.sagaId)).slice(before);
+    expect(sent.map((m) => [m.destination, m.type, m.envelope.payload.toStatus ?? null])).toEqual([
+      ["test-order-commands.fifo", "OrderStatusTransitionRequested", "REFUND_PENDING"],
+      ["test-payment-commands", "RefundRequested", null],
+    ]);
+    expect(sent[1]!.envelope.payload).toMatchObject({ orderId: s.orderId, amount: { amountMinor: 117_764, currency: "INR" }, reason: "CUSTOMER_REQUESTED" });
+
+    // Replies from Payment/Inventory carry the checkout saga's id; one with only the orderId routes too.
+    await ctx.engine.handleEvent(event(null, "RefundSucceeded", { orderId: s.orderId }));
+    sent = (await outbox(s.sagaId)).slice(before + 2);
+    expect(sent.map((m) => [m.type, m.envelope.payload.toStatus ?? null])).toEqual([
+      ["OrderStatusTransitionRequested", "REFUNDED"],
+      ["InventoryReturnRequested", null],
+    ]);
+    expect(sent[1]!.envelope).toMatchObject({ idempotencyKey: `${s.sagaId}:return`, payload: { orderId: s.orderId, reservationId: s.reservationId, reason: "ORDER_CANCELLED" } });
+
+    await ctx.engine.handleEvent(event(s.sagaId, "InventoryReturned", { orderId: s.orderId, reservationId: s.reservationId, outcome: "RETURNED", lines: [] }));
+    expect((await stateOf(s.sagaId)).state).toBe("CANCELLED");
+    expect((await outbox(s.sagaId)).filter((m) => m.type === "CheckoutFailed")).toEqual([]); // the checkout itself had succeeded
+    expect(await status(s.sagaId)).toMatchObject({ status: "CANCELLED" });
+  });
+
+  it("an unanswered refund is re-sent with the same key, then escalated; the timer resumes it after a restart", async () => {
+    const s = await toCompleted();
+    await ctx.engine.handleEvent(event(s.sagaId, "OrderCancellationRequested", { orderId: s.orderId, reason: "CUSTOMER_REQUESTED" }));
+    for (let i = 0; i < 2; i++) {
+      await expireDeadlines();
+      await ctx.engine.processDue();
+    }
+    const refunds = (await outbox(s.sagaId)).filter((m) => m.type === "RefundRequested");
+    expect(refunds.map((m) => m.envelope.idempotencyKey)).toEqual([`${s.sagaId}:refund`, `${s.sagaId}:refund`, `${s.sagaId}:refund`]);
+    await expireDeadlines();
+    await ctx.engine.processDue();
+    expect((await stateOf(s.sagaId)).state).toBe("MANUAL_REVIEW");
+    expect((await outbox(s.sagaId)).some((m) => m.type === "InventoryReturnRequested")).toBe(false); // no refund, no restock
   });
 });
 
@@ -370,9 +424,13 @@ describe("commands the saga sends match their receivers' published schemas", () 
     const lost = await toAwaitingPayment();
     await ctx.engine.handleEvent(event(lost.sagaId, "PaymentSucceeded", {}));
     await ctx.engine.handleEvent(event(lost.sagaId, "InventoryReservationFailed", { reason: "RESERVATION_EXPIRED" }));
+    // Completed, then the customer cancels: refund, then return the stock.
+    const cancelled = await toCompleted();
+    await ctx.engine.handleEvent(event(cancelled.sagaId, "OrderCancellationRequested", { orderId: cancelled.orderId, reason: "CUSTOMER_REQUESTED" }));
+    await ctx.engine.handleEvent(event(cancelled.sagaId, "RefundSucceeded", { orderId: cancelled.orderId }));
 
     const commands = (await outbox()).filter((m) => m.kind !== "topic");
-    expect(new Set(commands.map((c) => c.type))).toEqual(new Set(["InventoryReservationRequested", "OrderStatusTransitionRequested", "InventoryReservationConfirmRequested", "InventoryReservationReleaseRequested", "RefundRequested"]));
+    expect(new Set(commands.map((c) => c.type))).toEqual(new Set(["InventoryReservationRequested", "OrderStatusTransitionRequested", "InventoryReservationConfirmRequested", "InventoryReservationReleaseRequested", "RefundRequested", "InventoryReturnRequested"]));
     for (const c of commands) {
       const id = byType.get(c.type);
       expect(id, `no published schema for ${c.type}`).toBeDefined();

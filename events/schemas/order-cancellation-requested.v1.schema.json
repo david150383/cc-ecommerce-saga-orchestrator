@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.ecommerce.local/order-service/order-cancellation-requested.v1.schema.json",
+  "title": "OrderCancellationRequested v1",
+  "description": "A paid order (CONFIRMED or PROCESSING) is now CANCELLATION_PENDING: the customer or an admin asked to cancel it. The saga refunds the payment and returns the stock.",
+  "x-message-kind": "event",
+  "x-producer": "ecommerce-order-service",
+  "x-consumers": [
+    "ecommerce-saga-orchestrator"
+  ],
+  "x-channel": "SNS order-events",
+  "$ref": "../common/envelope.v1.schema.json",
+  "properties": {
+    "messageKind": {
+      "const": "event"
+    },
+    "messageType": {
+      "const": "OrderCancellationRequested"
+    },
+    "messageVersion": {
+      "const": 1
+    },
+    "producer": {
+      "const": "ecommerce-order-service"
+    },
+    "payload": {
+      "type": "object",
+      "required": [
+        "orderId",
+        "customerId",
+        "previousStatus",
+        "reason"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "orderId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "customerId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "previousStatus": {
+          "enum": [
+            "CONFIRMED",
+            "PROCESSING"
+          ]
+        },
+        "reason": {
+          "enum": [
+            "CUSTOMER_REQUESTED",
+            "ADMIN"
+          ]
+        }
+      }
+    }
+  }
+}

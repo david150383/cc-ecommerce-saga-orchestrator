@@ -67,6 +67,8 @@ const RELIES_ON: Record<string, string[]> = {
   RefundFailed: ["orderId"],
   OrderConfirmed: ["orderId"],
   OrderCancelled: ["orderId"],
+  OrderCancellationRequested: ["orderId"],
+  InventoryReturned: ["orderId"],
 };
 
 describe("events the saga consumes (consumer contract)", () => {

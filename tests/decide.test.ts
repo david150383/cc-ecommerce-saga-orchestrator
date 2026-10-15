@@ -168,6 +168,83 @@ describe("failures and compensation", () => {
   });
 });
 
+describe("cancelling a paid order (OrderCancellationRequested)", () => {
+  const paid = (state: SagaState, over: Partial<Saga> = {}) => saga(state, { paymentId: "pay-1", ...over });
+  const cancelRequested = (reason = "CUSTOMER_REQUESTED") => ev("OrderCancellationRequested", { orderId: "order-1", previousStatus: "CONFIRMED", reason });
+
+  it("COMPLETED → REFUNDING: the order moves to REFUND_PENDING and the FULL total is refunded", () => {
+    const d = run(paid("COMPLETED"), cancelRequested());
+    expect(d.state).toBe("REFUNDING");
+    expect(cmds(d)).toEqual(["order:OrderStatusTransitionRequested:REFUND_PENDING", "payment:RefundRequested"]);
+    expect(d.commands[1]).toMatchObject({
+      idempotencyKey: "saga-1:refund",
+      payload: { paymentId: "pay-1", orderId: "order-1", amount: { amountMinor: 117_764, currency: "INR" }, reason: "CUSTOMER_REQUESTED" },
+    });
+    expect(d.patch.compensation).toMatchObject({ awaiting: ["RefundSucceeded"], afterCompletion: true, returnStockAfterRefund: true });
+    expect(d.events).toEqual([]);
+    expect(d.deadline).toEqual(plus(30_000));
+  });
+
+  it("an admin's cancellation is refunded with reason ADMIN", () => {
+    expect(run(paid("COMPLETED"), cancelRequested("ADMIN")).commands[1]!.payload.reason).toBe("ADMIN");
+  });
+
+  it("RefundSucceeded → order REFUNDED and the stock is returned; InventoryReturned ends CANCELLED without CheckoutFailed", () => {
+    const refunding = run(paid("COMPLETED"), cancelRequested());
+    const s1 = paid("REFUNDING", { compensation: refunding.patch.compensation! });
+    const a = run(s1, ev("RefundSucceeded"));
+    expect(a.state).toBe("REFUNDING");
+    expect(cmds(a)).toEqual(["order:OrderStatusTransitionRequested:REFUNDED", "inventory:InventoryReturnRequested"]);
+    expect(a.commands[1]).toMatchObject({ idempotencyKey: "saga-1:return", payload: { orderId: "order-1", reservationId: "res-1", reason: "ORDER_CANCELLED" } });
+    expect(a.patch.compensation).toMatchObject({ awaiting: ["InventoryReturned"], returnStockAfterRefund: false });
+
+    const s2 = paid("REFUNDING", { compensation: a.patch.compensation! });
+    expect(run(s2, ev("RefundSucceeded")).ignored).toBeDefined(); // duplicate: no second return
+    const b = run(s2, ev("InventoryReturned", { outcome: "RETURNED" }));
+    expect(b.state).toBe("CANCELLED");
+    expect(b.commands).toEqual([]);
+    expect(b.events).toEqual([]); // the checkout did succeed: no CheckoutFailed
+  });
+
+  it("stock is NOT returned while the refund is unconfirmed; RefundFailed goes to MANUAL_REVIEW (order stays REFUND_PENDING)", () => {
+    const s1 = paid("REFUNDING", { compensation: run(paid("COMPLETED"), cancelRequested()).patch.compensation! });
+    const d = run(s1, ev("RefundFailed", { failureCode: "PROVIDER_REJECTED" }));
+    expect(d.state).toBe("MANUAL_REVIEW");
+    expect(d.commands).toEqual([]);
+    expect(d.events.map((e) => e.messageType)).toEqual(["SagaManualReviewRequired"]);
+  });
+
+  it("timeouts re-send the step that is unconfirmed (refund, then return) with the same keys, then escalate", () => {
+    const comp = run(paid("COMPLETED"), cancelRequested()).patch.compensation!;
+    expect(cmds(run(paid("REFUNDING", { compensation: comp }), { kind: "timeout" }))).toEqual(["payment:RefundRequested"]);
+    const returning = { ...comp, awaiting: ["InventoryReturned" as const], returnStockAfterRefund: false };
+    const t = run(paid("REFUNDING", { compensation: returning }), { kind: "timeout" });
+    expect(t.commands.map((c) => c.idempotencyKey)).toEqual(["saga-1:return"]);
+    expect(run(paid("REFUNDING", { compensation: returning, stepAttempts: 2 }), { kind: "timeout" }).state).toBe("MANUAL_REVIEW");
+  });
+
+  it("OrderCancellationRequested overtaking OrderConfirmed: announce CheckoutCompleted, then cancel", () => {
+    const d = run(paid("CONFIRMING_ORDER"), cancelRequested());
+    expect(d.state).toBe("REFUNDING");
+    expect(d.events.map((e) => e.messageType)).toEqual(["CheckoutCompleted"]);
+    expect(cmds(d)).toEqual(["order:OrderStatusTransitionRequested:REFUND_PENDING", "payment:RefundRequested"]);
+    // The late OrderConfirmed is then ignored.
+    expect(run(paid("REFUNDING", { compensation: d.patch.compensation! }), ev("OrderConfirmed")).ignored).toBeDefined();
+  });
+
+  it("a PaymentSucceeded redelivered after the cancellation is NOT a late payment (no second refund)", () => {
+    const comp = run(paid("COMPLETED"), cancelRequested()).patch.compensation!;
+    expect(run(paid("REFUNDING", { compensation: comp }), ev("PaymentSucceeded", { paymentId: "pay-1" })).ignored).toBeDefined();
+    expect(run(paid("CANCELLED", { compensation: { ...comp, awaiting: [] } }), ev("PaymentSucceeded", { paymentId: "pay-1" })).ignored).toBeDefined();
+  });
+
+  it("states where no paid order can be cancelling ignore it", () => {
+    for (const state of ["AWAITING_PAYMENT", "CANCELLED", "MANUAL_REVIEW"] as const) {
+      expect(run(paid(state), cancelRequested()).ignored).toBeDefined();
+    }
+  });
+});
+
 describe("duplicates, late events and operator actions", () => {
   it.each<[SagaState, string]>([
     ["INVENTORY_RESERVED", "InventoryReserved"],
