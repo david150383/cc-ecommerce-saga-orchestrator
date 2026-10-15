@@ -5,7 +5,7 @@ import { type Pool, transaction } from "../db/pool.js";
 import type { Logger } from "../lib/logger.js";
 import { HttpProblem } from "../lib/problem.js";
 import { decide, type SagaPolicy } from "./decide.js";
-import type { SagaRecord, SagaRepository } from "./repository.js";
+import { type SagaRecord, type SagaRepository, TooManyActiveCheckouts } from "./repository.js";
 import { type CheckoutRequest, type Input, SYNC_STATES, TERMINAL_STATES } from "./types.js";
 
 export interface InboundEvent {
@@ -44,7 +44,7 @@ export class SagaEngine {
     private readonly orders: OrderGateway,
     private readonly payments: PaymentGateway,
     private readonly policy: SagaPolicy,
-    private readonly config: { frontendBaseUrl: string },
+    private readonly config: { frontendBaseUrl: string; maxActiveCheckouts?: number },
     private readonly logger: Logger,
     private readonly clock: () => Date = () => new Date(),
   ) {}
@@ -57,9 +57,20 @@ export class SagaEngine {
    */
   async startCheckout(customerId: string, idempotencyKey: string, request: CheckoutRequest): Promise<{ saga: SagaRecord; replayed: boolean }> {
     const requestHash = createHash("sha256").update(canonicalJson(request)).digest("hex");
-    const { saga, created } = await transaction(this.db, (c) =>
-      this.repo.insertStarted(c, { id: uuidv7(), customerId, idempotencyKey, requestHash, request }),
-    );
+    let saga: SagaRecord;
+    let created: boolean;
+    try {
+      ({ saga, created } = await transaction(this.db, (c) =>
+        this.repo.insertStarted(c, { id: uuidv7(), customerId, idempotencyKey, requestHash, request }, this.config.maxActiveCheckouts),
+      ));
+    } catch (err) {
+      if (err instanceof TooManyActiveCheckouts) {
+        throw new HttpProblem(429, "TOO_MANY_ACTIVE_CHECKOUTS", "Finish or cancel an open checkout before starting another", undefined, undefined, {
+          extra: { active: err.active },
+        });
+      }
+      throw err;
+    }
     if (!created) {
       if (saga.requestHash !== requestHash) {
         throw new HttpProblem(422, "IDEMPOTENCY_KEY_REUSED", "This idempotency key was used for a different checkout");

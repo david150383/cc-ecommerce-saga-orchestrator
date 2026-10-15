@@ -1,0 +1,9 @@
+# Secret scanning (gitleaks): the default rules, plus narrowly scoped false positives.
+[extend]
+useDefault = true
+
+# SHA-256 hashes of vendored contract files (contracts.lock.json), not credentials.
+[[allowlists]]
+description = "contracts lock hashes"
+paths = ['''^contracts\.lock\.json$''']
+

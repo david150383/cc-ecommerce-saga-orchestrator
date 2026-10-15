@@ -382,3 +382,38 @@ describe("commands the saga sends match their receivers' published schemas", () 
     }
   });
 });
+
+describe("abuse limit: checkouts holding stock before payment", () => {
+  const post = async (c: Ctx, key: string, sub: string) =>
+    request(c.app).post("/api/v1/checkout").set(await auth(["customer"], sub)).set("Idempotency-Key", key).send(checkoutBody);
+
+  it("a customer may hold at most 3; a replay of an existing checkout is never refused; others are unaffected", async () => {
+    const limited = await buildTestContext({ MAX_ACTIVE_CHECKOUTS_PER_CUSTOMER: "3" });
+    const me = newId();
+    const keys = [newId(), newId(), newId()];
+    for (const k of keys) expect((await post(limited, k, me)).status).toBe(202);
+    const fourth = await post(limited, newId(), me);
+    expect([fourth.status, fourth.body.code, fourth.body.active]).toEqual([429, "TOO_MANY_ACTIVE_CHECKOUTS", 3]);
+    const replay = await post(limited, keys[0]!, me); // same key: the same checkout, replayed (not a 4th)
+    expect([replay.status, replay.headers["idempotency-replayed"]]).toEqual([202, "true"]);
+    expect((await post(limited, newId(), newId())).status).toBe(202); // another customer
+  });
+
+  it("a finished checkout frees a slot", async () => {
+    const limited = await buildTestContext({ MAX_ACTIVE_CHECKOUTS_PER_CUSTOMER: "1" });
+    const me = newId();
+    const first = await post(limited, newId(), me);
+    expect((await post(limited, newId(), me)).status).toBe(429);
+    await limited.engine.handleEvent(event(first.body.sagaId, "InventoryReservationFailed", { reason: "INSUFFICIENT_STOCK", orderId: first.body.orderId }));
+    expect((await stateOf(first.body.sagaId)).state).toBe("CANCELLING"); // nothing reserved any more: no slot held
+    expect((await post(limited, newId(), me)).status).toBe(202);
+  });
+
+  it("concurrent requests cannot slip past the limit", async () => {
+    const limited = await buildTestContext({ MAX_ACTIVE_CHECKOUTS_PER_CUSTOMER: "3" });
+    const me = newId();
+    const results = await Promise.all(Array.from({ length: 8 }, () => post(limited, newId(), me)));
+    expect(results.filter((r) => r.status === 202)).toHaveLength(3);
+    expect(results.filter((r) => r.status === 429)).toHaveLength(5);
+  });
+});

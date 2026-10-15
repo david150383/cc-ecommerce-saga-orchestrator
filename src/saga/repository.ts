@@ -62,14 +62,40 @@ export interface Destinations {
 
 const TERMINAL: SagaState[] = ["COMPLETED", "CANCELLED", "FAILED", "RESOLVED"];
 
+export class TooManyActiveCheckouts extends Error {
+  constructor(readonly active: number) {
+    super(`customer already has ${active} active checkouts`);
+  }
+}
+
 export class SagaRepository {
   constructor(private readonly destinations: Destinations) {}
 
-  /** Inserts a new STARTED saga, or returns the existing one for (customer, idempotency key). */
+  /**
+   * Inserts a new STARTED saga, or returns the existing one for (customer, idempotency key).
+   * A NEW checkout is refused (TooManyActiveCheckouts) when the customer already has `maxActive`
+   * checkouts holding stock before payment: otherwise one account could reserve the whole inventory
+   * without paying. A per-customer advisory lock makes "count, then insert" atomic.
+   */
   async insertStarted(
     db: Client,
     s: { id: string; customerId: string; idempotencyKey: string; requestHash: string; request: CheckoutRequest },
+    maxActive = Number.POSITIVE_INFINITY,
   ): Promise<{ saga: SagaRecord; created: boolean }> {
+    await db.query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [`checkout:${s.customerId}`]);
+    const replay = await db.query<Row>(`SELECT * FROM saga_instances WHERE customer_id = $1 AND idempotency_key = $2`, [
+      s.customerId,
+      s.idempotencyKey,
+    ]);
+    if (replay.rows[0]) return { saga: toSaga(replay.rows[0]), created: false };
+    if (Number.isFinite(maxActive)) {
+      const { rows } = await db.query<{ n: number }>(
+        `SELECT count(*)::int AS n FROM saga_instances
+          WHERE customer_id = $1 AND state IN ('STARTED', 'RESERVING_INVENTORY', 'INVENTORY_RESERVED', 'AWAITING_PAYMENT')`,
+        [s.customerId],
+      );
+      if (rows[0]!.n >= maxActive) throw new TooManyActiveCheckouts(rows[0]!.n);
+    }
     const inserted = await db.query<Row>(
       `INSERT INTO saga_instances (id, customer_id, idempotency_key, request_hash, request, state, deadline_at)
        VALUES ($1, $2, $3, $4, $5, 'STARTED', now())

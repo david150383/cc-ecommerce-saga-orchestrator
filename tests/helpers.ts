@@ -101,7 +101,9 @@ export async function buildTestContext(overrides: Record<string, string> = {}, d
   const payments = new FakePayments();
   const repo = new SagaRepository(destinations);
   const policy = { reservationTimeoutMs: 30_000, paymentTimeoutMs: 1_800_000, stepTimeoutMs: 30_000, maxStepAttempts: 3 };
-  const engine = new SagaEngine(testPool(), repo, orders, payments, policy, { frontendBaseUrl: "http://localhost:5173" }, logger);
+  // The abuse limit applies only when a test asks for it (other tests start many checkouts per customer).
+  const maxActiveCheckouts = overrides.MAX_ACTIVE_CHECKOUTS_PER_CUSTOMER ? env.MAX_ACTIVE_CHECKOUTS_PER_CUSTOMER : undefined;
+  const engine = new SagaEngine(testPool(), repo, orders, payments, policy, { frontendBaseUrl: "http://localhost:5173", maxActiveCheckouts }, logger);
   const verifier = new TokenVerifier(
     { jwksUrl: "http://unused.invalid/jwks", issuer: "ecommerce-auth-service", audiences: ["ecommerce-api", "ecommerce-saga-orchestrator"] },
     (await testKeys()).jwks,

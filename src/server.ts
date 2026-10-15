@@ -36,7 +36,7 @@ const engine = new SagaEngine(
     stepTimeoutMs: env.STEP_TIMEOUT_SECONDS * 1000,
     maxStepAttempts: env.MAX_STEP_ATTEMPTS,
   },
-  { frontendBaseUrl: env.FRONTEND_BASE_URL },
+  { frontendBaseUrl: env.FRONTEND_BASE_URL, maxActiveCheckouts: env.MAX_ACTIVE_CHECKOUTS_PER_CUSTOMER },
   logger,
 );
 const workers = createWorkers(env, db, engine, logger);
