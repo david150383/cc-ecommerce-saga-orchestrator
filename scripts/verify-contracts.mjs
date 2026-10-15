@@ -1,12 +1,13 @@
-/* global process, console */
 // Vendored from ecommerce-contracts. Do not edit: re-vendor instead.
 //
 // Fails if a vendored contract file differs from what contracts.lock.json pinned (a hand edit, or a
 // file added or removed outside `vendor.mjs`). Contracts change in ecommerce-contracts, through a
 // release; this service then pins the new release deliberately.
+import console from "node:console";
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
+import process from "node:process";
 
 const root = process.argv[2] ?? process.cwd();
 const lock = JSON.parse(readFileSync(join(root, "contracts.lock.json"), "utf8"));
