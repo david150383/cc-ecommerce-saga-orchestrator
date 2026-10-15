@@ -39,11 +39,12 @@ export class InboxConsumer {
     await this.loop;
   }
 
-  async pollOnce(): Promise<number> {
-    this.queueUrl ??= (await this.sqs.send(new GetQueueUrlCommand({ QueueName: this.queueName }))).QueueUrl!;
+  async pollOnce(opts: { waitSeconds?: number; signal?: AbortSignal } = {}): Promise<number> {
+    const signal = opts.signal ? AbortSignal.any([this.abort.signal, opts.signal]) : this.abort.signal;
+    this.queueUrl ??= (await this.sqs.send(new GetQueueUrlCommand({ QueueName: this.queueName }), { abortSignal: signal })).QueueUrl!;
     const { Messages = [] } = await this.sqs.send(
-      new ReceiveMessageCommand({ QueueUrl: this.queueUrl, MaxNumberOfMessages: 10, WaitTimeSeconds: this.waitTimeSeconds }),
-      { abortSignal: this.abort.signal },
+      new ReceiveMessageCommand({ QueueUrl: this.queueUrl, MaxNumberOfMessages: 10, WaitTimeSeconds: opts.waitSeconds ?? this.waitTimeSeconds }),
+      { abortSignal: signal },
     );
     let ok = 0;
     for (const m of Messages) if (await this.process(m)) ok++;
@@ -59,14 +60,17 @@ export class InboxConsumer {
    */
   async drain(ms: number): Promise<number> {
     const until = Date.now() + ms;
+    // A hard bound: a slow or hung receive is aborted at the deadline (the timer must not start late).
+    const deadline = AbortSignal.timeout(ms);
     let applied = 0;
-    while (!this.abort.signal.aborted && Date.now() < until) {
+    while (!this.abort.signal.aborted && !deadline.aborted && Date.now() < until) {
+      const remainingSeconds = Math.max(0, Math.min(this.waitTimeSeconds, Math.floor((until - Date.now()) / 1000)));
       try {
-        applied += await this.pollOnce();
+        applied += await this.pollOnce({ waitSeconds: remainingSeconds, signal: deadline });
       } catch (err) {
-        if (this.abort.signal.aborted) break;
+        if (this.abort.signal.aborted || deadline.aborted) break;
         this.logger.error({ err, queue: this.queueName }, "receive failed during startup drain; backing off");
-        await new Promise((r) => setTimeout(r, 2_000));
+        await new Promise((r) => setTimeout(r, Math.min(2_000, Math.max(0, until - Date.now()))));
       }
     }
     return applied;

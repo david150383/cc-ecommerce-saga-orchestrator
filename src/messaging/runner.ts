@@ -36,8 +36,9 @@ export function createWorkers(env: Env, db: Pool, engine: SagaEngine, logger: Lo
         // Apply what arrived during downtime BEFORE judging any deadline (see InboxConsumer.drain).
         if (env.MESSAGING_ENABLED && env.STARTUP_DRAIN_MS > 0) {
           logger.info({ drainMs: env.STARTUP_DRAIN_MS }, "draining saga-inbox before the timer starts");
+          const started = Date.now();
           const applied = await inbox.drain(env.STARTUP_DRAIN_MS);
-          logger.info({ applied }, "startup drain done");
+          logger.info({ applied, elapsedMs: Date.now() - started }, "startup drain done");
         }
         if (stopped) return;
         if (env.MESSAGING_ENABLED) inbox.start();

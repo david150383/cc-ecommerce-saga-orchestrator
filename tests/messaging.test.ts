@@ -153,6 +153,15 @@ describe("saga inbox consumer", () => {
 });
 
 describe("startup: events that arrived during downtime win over deadlines", () => {
+  it("the drain is bounded by wall-clock time even with a long receive wait", async () => {
+    const slow = await buildTestContext({ AWS_ENDPOINT_URL: endpoint, SAGA_INBOX_QUEUE_NAME: names.inbox, CONSUMER_WAIT_TIME_SECONDS: "20", MESSAGING_ENABLED: "true" });
+    const w = createWorkers(slow.env, slow.db, slow.engine, slow.logger);
+    const started = Date.now();
+    await w.inbox.drain(1_500); // an empty queue with a 20 s long poll must not hold the drain for 20 s
+    expect(Date.now() - started).toBeLessThan(4_000);
+    await w.stop();
+  });
+
   async function scenario(drainMs: string) {
     const live = await buildTestContext(
       { AWS_ENDPOINT_URL: endpoint, SAGA_INBOX_QUEUE_NAME: names.inbox, CONSUMER_WAIT_TIME_SECONDS: "1", MESSAGING_ENABLED: "true", TIMER_INTERVAL_MS: "50", STARTUP_DRAIN_MS: drainMs },
