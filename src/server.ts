@@ -66,7 +66,7 @@ const app = createApp({
 const server = app.listen(env.PORT, () => {
   logger.info({ port: env.PORT }, "server listening");
   // Recovery is automatic: whatever was overdue when the previous instance stopped is picked up now.
-  workers.start();
+  void workers.start(); // drains saga-inbox, then starts the timer; HTTP serves meanwhile
 });
 
 function shutdown(signal: NodeJS.Signals): void {

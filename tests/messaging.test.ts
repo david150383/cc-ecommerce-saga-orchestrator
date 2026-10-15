@@ -3,7 +3,7 @@ import { CreateQueueCommand, GetQueueAttributesCommand, ReceiveMessageCommand, S
 import request from "supertest";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createWorkers } from "../src/messaging/runner.js";
-import { auth, buildTestContext, checkoutBody, event, newId, resetDatabase, stateOf } from "./helpers.js";
+import { auth, buildTestContext, checkoutBody, event, expireDeadlines, newId, resetDatabase, stateOf } from "./helpers.js";
 
 // Runs against the local AWS emulator (Floci), with a private set of queues and a topic per run.
 const endpoint = process.env.TEST_AWS_ENDPOINT_URL ?? "http://localhost:4566";
@@ -149,5 +149,39 @@ describe("saga inbox consumer", () => {
     }
     await workers.inbox.pollOnce();
     expect(await drain(names.inboxDlq, 3)).toHaveLength(2);
+  });
+});
+
+describe("startup: events that arrived during downtime win over deadlines", () => {
+  async function scenario(drainMs: string) {
+    const live = await buildTestContext(
+      { AWS_ENDPOINT_URL: endpoint, SAGA_INBOX_QUEUE_NAME: names.inbox, CONSUMER_WAIT_TIME_SECONDS: "1", MESSAGING_ENABLED: "true", TIMER_INTERVAL_MS: "50", STARTUP_DRAIN_MS: drainMs },
+      { queues: { inventory: names.inventory, order: names.order, payment: names.payment }, eventsTopicArn: topicArn },
+    );
+    await drain(names.inbox, 0);
+    const s = await checkout();
+    await live.engine.handleEvent(event(s.sagaId, "InventoryReserved", { reservationId: newId(), orderId: s.orderId }));
+    expect((await stateOf(s.sagaId)).state).toBe("AWAITING_PAYMENT");
+    // While the saga was "down": the customer paid in time, and the deadline then passed.
+    await sqs.send(
+      new SendMessageCommand({
+        QueueUrl: url(names.inbox),
+        MessageBody: JSON.stringify({ ...event(s.sagaId, "PaymentSucceeded", { orderId: s.orderId, paymentId: newId() }), messageKind: "event", messageVersion: 1, producer: "ecommerce-payment-service", occurredAt: new Date().toISOString(), causationId: null, idempotencyKey: null }),
+      }),
+    );
+    await expireDeadlines();
+    const w = createWorkers(live.env, live.db, live.engine, live.logger);
+    await w.start(); // restart
+    await new Promise((r) => setTimeout(r, 500)); // let the timer tick a few times
+    await w.stop();
+    return (await stateOf(s.sagaId)).state;
+  }
+
+  it("with the startup drain: the waiting payment is applied first, the order is not cancelled", async () => {
+    expect(await scenario("2500")).toBe("CONFIRMING_INVENTORY");
+  });
+
+  it("without it (STARTUP_DRAIN_MS=0) the timer cancels a checkout paid in time, and the payment is refunded: the bug", async () => {
+    expect(["CANCELLING", "CANCELLED", "REFUNDING"]).toContain(await scenario("0"));
   });
 });

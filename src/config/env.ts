@@ -55,6 +55,9 @@ const EnvSchema = z.object({
   MAX_STEP_ATTEMPTS: z.coerce.number().int().min(1).max(20).default(5),
   /// How often overdue sagas (timeouts, retries, crash recovery) are picked up. 0 disables (tests drive it).
   TIMER_INTERVAL_MS: z.coerce.number().int().min(0).default(1_000),
+  /// At startup, apply saga-inbox events for this long before the timer judges deadlines. Must exceed the
+  /// queue's visibility timeout (60 s) so events a killed instance had received are drained too.
+  STARTUP_DRAIN_MS: z.coerce.number().int().min(0).default(65_000),
   /// Checkouts a customer may have holding stock before payment (abuse limit: reserving without paying).
   MAX_ACTIVE_CHECKOUTS_PER_CUSTOMER: z.coerce.number().int().min(1).max(50).default(3),
 });

@@ -50,6 +50,28 @@ export class InboxConsumer {
     return ok;
   }
 
+  /**
+   * Receives and applies events for `ms` milliseconds (used at startup, before the timer runs).
+   * Events that arrived while the service was down must be applied BEFORE deadlines are judged: a
+   * payment made in time must not lose to a timeout just because the saga was restarting. `ms` should
+   * exceed the queue's visibility timeout, so that a message an instance received just before it was
+   * killed (invisible until the timeout expires) is drained too. Returns the number of events applied.
+   */
+  async drain(ms: number): Promise<number> {
+    const until = Date.now() + ms;
+    let applied = 0;
+    while (!this.abort.signal.aborted && Date.now() < until) {
+      try {
+        applied += await this.pollOnce();
+      } catch (err) {
+        if (this.abort.signal.aborted) break;
+        this.logger.error({ err, queue: this.queueName }, "receive failed during startup drain; backing off");
+        await new Promise((r) => setTimeout(r, 2_000));
+      }
+    }
+    return applied;
+  }
+
   private async run(): Promise<void> {
     while (!this.abort.signal.aborted) {
       try {

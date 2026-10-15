@@ -24,21 +24,33 @@ export function createWorkers(env: Env, db: Pool, engine: SagaEngine, logger: Lo
       });
   };
 
+  let startup: Promise<void> | undefined;
+
   return {
     relay,
     inbox,
-    start() {
-      if (env.MESSAGING_ENABLED) {
-        relay.start();
-        inbox.start();
-      }
-      if (env.TIMER_INTERVAL_MS > 0) tick();
-      logger.info({ messaging: env.MESSAGING_ENABLED, timerMs: env.TIMER_INTERVAL_MS }, "saga workers started");
+    /** Resolves once the startup drain is over and the inbox loop and timer are running. */
+    start(): Promise<void> {
+      if (env.MESSAGING_ENABLED) relay.start();
+      startup = (async () => {
+        // Apply what arrived during downtime BEFORE judging any deadline (see InboxConsumer.drain).
+        if (env.MESSAGING_ENABLED && env.STARTUP_DRAIN_MS > 0) {
+          logger.info({ drainMs: env.STARTUP_DRAIN_MS }, "draining saga-inbox before the timer starts");
+          const applied = await inbox.drain(env.STARTUP_DRAIN_MS);
+          logger.info({ applied }, "startup drain done");
+        }
+        if (stopped) return;
+        if (env.MESSAGING_ENABLED) inbox.start();
+        if (env.TIMER_INTERVAL_MS > 0) tick();
+        logger.info({ messaging: env.MESSAGING_ENABLED, timerMs: env.TIMER_INTERVAL_MS }, "saga workers started");
+      })();
+      return startup;
     },
     async stop() {
       stopped = true;
       clearTimeout(timer);
-      await inbox.stop(); // stop taking events first
+      await inbox.stop(); // stop taking events first (also ends a startup drain)
+      await startup;
       await timerRun;
       await relay.stop();
     },
