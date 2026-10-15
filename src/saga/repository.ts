@@ -198,14 +198,16 @@ export class SagaRepository {
   }
 
   /** Overdue sagas (timeouts, sync retries, crash recovery), claimed so instances do not collide. */
-  async claimDue(db: Client, limit: number): Promise<string[]> {
+  /** Overdue sagas; `onlyStates` restricts the claim (e.g. synchronous-step retries during the startup drain). */
+  async claimDue(db: Client, limit: number, onlyStates?: readonly SagaState[]): Promise<string[]> {
     const r = await db.query<{ id: string }>(
       `SELECT id FROM saga_instances
         WHERE deadline_at <= now() AND (lease_until IS NULL OR lease_until < now())
+          AND ($2::saga_state[] IS NULL OR state = ANY($2::saga_state[]))
         ORDER BY deadline_at
         LIMIT $1
           FOR UPDATE SKIP LOCKED`,
-      [limit],
+      [limit, onlyStates ? [...onlyStates] : null],
     );
     return r.rows.map((x) => x.id);
   }

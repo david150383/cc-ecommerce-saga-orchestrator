@@ -160,14 +160,20 @@ export class SagaEngine {
    * due retries of synchronous steps. Because EVERY non-terminal state has a deadline, this is
    * also crash recovery: whatever an instance was doing when it died becomes due and is resumed.
    */
-  async processDue(limit = 20): Promise<number> {
+  /**
+   * `timeouts: false` (during the startup drain) runs only retries of synchronous steps: forward
+   * progress that does not depend on events still waiting in the inbox. Deadlines of waiting states are
+   * judged only once those events have been applied.
+   */
+  async processDue(limit = 20, opts: { timeouts?: boolean } = {}): Promise<number> {
+    const timeouts = opts.timeouts ?? true;
     // The claim is only a cheap filter: its locks end when this short transaction commits, so
     // another instance may claim the same ids right after. processOne re-checks under the row lock.
-    const due = await transaction(this.db, (c) => this.repo.claimDue(c, limit));
+    const due = await transaction(this.db, (c) => this.repo.claimDue(c, limit, timeouts ? undefined : SYNC_STATES));
     let processed = 0;
     for (const id of due) {
       try {
-        if (await this.processOne(id)) processed++;
+        if (await this.processOne(id, timeouts)) processed++;
       } catch (err) {
         this.logger.error({ err, sagaId: id }, "processing an overdue saga failed");
       }
@@ -176,12 +182,13 @@ export class SagaEngine {
   }
 
   /** Returns false when the saga was no longer due (another instance handled it first). */
-  private async processOne(id: string): Promise<boolean> {
+  private async processOne(id: string, timeouts = true): Promise<boolean> {
     const outcome = await transaction(this.db, async (c) => {
       const saga = await this.repo.lock(c, id);
       // Re-check under the row lock: the deadline may have moved since the claim.
       if (!saga || TERMINAL_STATES.includes(saga.state) || !saga.deadlineAt || saga.deadlineAt > this.clock()) return "skip";
       if (SYNC_STATES.includes(saga.state)) return "sync";
+      if (!timeouts) return "skip"; // the state moved on since the claim; judge it after the drain
       const decision = decide(saga, { kind: "timeout" }, this.clock(), this.policy);
       await this.repo.apply(c, saga, decision, { correlationId: saga.id, causationId: null });
       return "done";

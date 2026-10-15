@@ -14,10 +14,11 @@ export function createWorkers(env: Env, db: Pool, engine: SagaEngine, logger: Lo
   let timerRun: Promise<unknown> | undefined;
   let stopped = false;
 
+  let draining = false;
   const tick = () => {
     if (stopped) return;
     timerRun = engine
-      .processDue()
+      .processDue(20, { timeouts: !draining })
       .catch((err: unknown) => logger.error({ err }, "timer tick failed"))
       .finally(() => {
         if (!stopped) timer = setTimeout(tick, env.TIMER_INTERVAL_MS);
@@ -34,15 +35,20 @@ export function createWorkers(env: Env, db: Pool, engine: SagaEngine, logger: Lo
       if (env.MESSAGING_ENABLED) relay.start();
       startup = (async () => {
         // Apply what arrived during downtime BEFORE judging any deadline (see InboxConsumer.drain).
+        // The timer runs meanwhile, but only for synchronous-step retries (forward progress).
         if (env.MESSAGING_ENABLED && env.STARTUP_DRAIN_MS > 0) {
-          logger.info({ drainMs: env.STARTUP_DRAIN_MS }, "draining saga-inbox before the timer starts");
+          draining = true;
+          if (env.TIMER_INTERVAL_MS > 0) tick();
+          logger.info({ drainMs: env.STARTUP_DRAIN_MS }, "draining saga-inbox before deadlines are judged");
           const started = Date.now();
           const applied = await inbox.drain(env.STARTUP_DRAIN_MS);
+          draining = false;
           logger.info({ applied, elapsedMs: Date.now() - started }, "startup drain done");
+        } else if (env.TIMER_INTERVAL_MS > 0) {
+          tick();
         }
         if (stopped) return;
         if (env.MESSAGING_ENABLED) inbox.start();
-        if (env.TIMER_INTERVAL_MS > 0) tick();
         logger.info({ messaging: env.MESSAGING_ENABLED, timerMs: env.TIMER_INTERVAL_MS }, "saga workers started");
       })();
       return startup;

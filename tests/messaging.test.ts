@@ -194,3 +194,34 @@ describe("startup: events that arrived during downtime win over deadlines", () =
     expect(["CANCELLING", "CANCELLED", "REFUNDING"]).toContain(await scenario("0"));
   });
 });
+
+describe("startup: during the drain, retries progress but deadlines wait", () => {
+  it("a failed payment-intent step is retried during the drain; an expired payment deadline is judged only after it", async () => {
+    const live = await buildTestContext(
+      { AWS_ENDPOINT_URL: endpoint, SAGA_INBOX_QUEUE_NAME: names.inbox, CONSUMER_WAIT_TIME_SECONDS: "1", MESSAGING_ENABLED: "true", TIMER_INTERVAL_MS: "50", STARTUP_DRAIN_MS: "3000" },
+      { queues: { inventory: names.inventory, order: names.order, payment: names.payment }, eventsTopicArn: topicArn },
+    );
+    await drain(names.inbox, 0);
+    // A: its payment-intent call failed (the Payment Service was down), retry due.
+    live.payments.mode = "down";
+    const a = await checkout();
+    await live.engine.handleEvent(event(a.sagaId, "InventoryReserved", { reservationId: newId(), orderId: a.orderId }));
+    expect((await stateOf(a.sagaId)).state).toBe("INVENTORY_RESERVED");
+    // B: waiting for a payment whose deadline has passed.
+    live.payments.mode = "ok";
+    const b = await checkout();
+    await live.engine.handleEvent(event(b.sagaId, "InventoryReserved", { reservationId: newId(), orderId: b.orderId }));
+    expect((await stateOf(b.sagaId)).state).toBe("AWAITING_PAYMENT");
+    await expireDeadlines();
+
+    const w = createWorkers(live.env, live.db, live.engine, live.logger);
+    const startup = w.start();
+    await new Promise((r) => setTimeout(r, 1_000)); // inside the 3 s drain
+    expect((await stateOf(a.sagaId)).state).toBe("AWAITING_PAYMENT"); // retried: forward progress
+    expect((await stateOf(b.sagaId)).state).toBe("AWAITING_PAYMENT"); // deadline NOT judged yet
+    await startup;
+    await new Promise((r) => setTimeout(r, 500));
+    expect((await stateOf(b.sagaId)).state).not.toBe("AWAITING_PAYMENT"); // judged after the drain
+    await w.stop();
+  });
+});
