@@ -7,7 +7,7 @@
   "x-producer": "ecommerce-saga-orchestrator",
   "x-consumers": [],
   "x-channel": "SNS saga-events",
-  "$ref": "envelope.v1.schema.json",
+  "$ref": "../common/envelope.v1.schema.json",
   "properties": {
     "messageKind": {
       "const": "event"

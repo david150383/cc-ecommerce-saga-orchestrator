@@ -18,7 +18,8 @@
     "db:migrate": "node-pg-migrate up --migrations-dir migrations --migration-file-language sql",
     "db:rollback": "node-pg-migrate down --migrations-dir migrations --migration-file-language sql",
     "db:create-migration": "node-pg-migrate create --migrations-dir migrations --migration-file-language sql",
-    "openapi:export": "tsx src/scripts/export-openapi.ts"
+    "openapi:export": "tsx src/scripts/export-openapi.ts",
+    "contracts:verify": "node scripts/verify-contracts.mjs"
   },
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "^9.1.0",

@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.ecommerce.local/inventory-service/inventory-reservation-released.v1.schema.json",
+  "title": "InventoryReservationReleased v1",
+  "description": "Reserved stock was returned to available (on request or because the reservation expired). Also emitted when there was nothing to release.",
+  "x-message-kind": "event",
+  "x-producer": "ecommerce-inventory-service",
+  "x-consumers": [
+    "ecommerce-saga-orchestrator"
+  ],
+  "x-channel": "SNS inventory-events",
+  "$ref": "../common/envelope.v1.schema.json",
+  "properties": {
+    "messageKind": {
+      "const": "event"
+    },
+    "messageType": {
+      "const": "InventoryReservationReleased"
+    },
+    "messageVersion": {
+      "const": 1
+    },
+    "producer": {
+      "const": "ecommerce-inventory-service"
+    },
+    "payload": {
+      "type": "object",
+      "required": [
+        "orderId",
+        "reservationId",
+        "reason"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "orderId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "reservationId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reason": {
+          "enum": [
+            "REQUESTED",
+            "EXPIRED",
+            "NOTHING_TO_RELEASE"
+          ]
+        }
+      }
+    }
+  }
+}

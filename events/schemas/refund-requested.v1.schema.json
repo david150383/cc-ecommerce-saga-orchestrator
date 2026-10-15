@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.ecommerce.local/payment-service/refund-requested.v1.schema.json",
+  "title": "RefundRequested v1",
+  "description": "Refund (part of) a captured payment. Completion is reported only by RefundSucceeded.",
+  "x-message-kind": "command",
+  "x-producer": "ecommerce-saga-orchestrator",
+  "x-consumers": [
+    "ecommerce-payment-service"
+  ],
+  "x-channel": "SQS payment-commands",
+  "$ref": "../common/envelope.v1.schema.json",
+  "properties": {
+    "messageKind": {
+      "const": "command"
+    },
+    "messageType": {
+      "const": "RefundRequested"
+    },
+    "messageVersion": {
+      "const": 1
+    },
+    "producer": {
+      "const": "ecommerce-saga-orchestrator"
+    },
+    "payload": {
+      "type": "object",
+      "required": [
+        "paymentId",
+        "orderId",
+        "amount",
+        "reason"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "paymentId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "orderId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "amount": {
+          "type": "object",
+          "description": "Integer minor units + ISO 4217 currency. Never floating point.",
+          "required": [
+            "amountMinor",
+            "currency"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "amountMinor": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "currency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$"
+            }
+          }
+        },
+        "reason": {
+          "enum": [
+            "OUT_OF_STOCK_AFTER_PAYMENT",
+            "LATE_PAYMENT_AFTER_CANCELLATION",
+            "CUSTOMER_REQUESTED",
+            "ADMIN"
+          ]
+        }
+      }
+    }
+  }
+}

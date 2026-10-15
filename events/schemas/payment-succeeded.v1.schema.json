@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.ecommerce.local/payment-service/payment-succeeded.v1.schema.json",
+  "title": "PaymentSucceeded v1",
+  "description": "Funds captured, confirmed by a verified provider webhook or server-side status query. Never by a browser redirect.",
+  "x-message-kind": "event",
+  "x-producer": "ecommerce-payment-service",
+  "x-consumers": [
+    "ecommerce-saga-orchestrator"
+  ],
+  "x-channel": "SNS payment-events",
+  "$ref": "../common/envelope.v1.schema.json",
+  "properties": {
+    "messageKind": {
+      "const": "event"
+    },
+    "messageType": {
+      "const": "PaymentSucceeded"
+    },
+    "messageVersion": {
+      "const": 1
+    },
+    "producer": {
+      "const": "ecommerce-payment-service"
+    },
+    "payload": {
+      "type": "object",
+      "required": [
+        "paymentId",
+        "orderId",
+        "customerId",
+        "amount",
+        "provider",
+        "providerPaymentRef"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "paymentId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "orderId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "customerId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "amount": {
+          "type": "object",
+          "description": "Integer minor units + ISO 4217 currency. Never floating point.",
+          "required": [
+            "amountMinor",
+            "currency"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "amountMinor": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "currency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$"
+            }
+          }
+        },
+        "provider": {
+          "enum": [
+            "mock",
+            "stripe",
+            "razorpay"
+          ]
+        },
+        "providerPaymentRef": {
+          "type": "string",
+          "maxLength": 255
+        }
+      }
+    }
+  }
+}

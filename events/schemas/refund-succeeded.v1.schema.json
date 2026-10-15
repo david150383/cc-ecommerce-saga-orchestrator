@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.ecommerce.local/payment-service/refund-succeeded.v1.schema.json",
+  "title": "RefundSucceeded v1",
+  "description": "The provider confirmed the refund completed.",
+  "x-message-kind": "event",
+  "x-producer": "ecommerce-payment-service",
+  "x-consumers": [
+    "ecommerce-saga-orchestrator",
+    "ecommerce-notification-service"
+  ],
+  "x-channel": "SNS payment-events",
+  "$ref": "../common/envelope.v1.schema.json",
+  "properties": {
+    "messageKind": {
+      "const": "event"
+    },
+    "messageType": {
+      "const": "RefundSucceeded"
+    },
+    "messageVersion": {
+      "const": 1
+    },
+    "producer": {
+      "const": "ecommerce-payment-service"
+    },
+    "payload": {
+      "type": "object",
+      "required": [
+        "refundId",
+        "paymentId",
+        "orderId",
+        "customerId",
+        "amount"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "refundId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "paymentId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "orderId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "customerId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "amount": {
+          "type": "object",
+          "description": "Integer minor units + ISO 4217 currency. Never floating point.",
+          "required": [
+            "amountMinor",
+            "currency"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "amountMinor": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "currency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$"
+            }
+          }
+        }
+      }
+    }
+  }
+}

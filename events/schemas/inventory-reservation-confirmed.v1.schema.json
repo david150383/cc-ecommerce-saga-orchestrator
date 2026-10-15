@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.ecommerce.local/inventory-service/inventory-reservation-confirmed.v1.schema.json",
+  "title": "InventoryReservationConfirmed v1",
+  "description": "Reserved stock has been permanently deducted.",
+  "x-message-kind": "event",
+  "x-producer": "ecommerce-inventory-service",
+  "x-consumers": [
+    "ecommerce-saga-orchestrator"
+  ],
+  "x-channel": "SNS inventory-events",
+  "$ref": "../common/envelope.v1.schema.json",
+  "properties": {
+    "messageKind": {
+      "const": "event"
+    },
+    "messageType": {
+      "const": "InventoryReservationConfirmed"
+    },
+    "messageVersion": {
+      "const": 1
+    },
+    "producer": {
+      "const": "ecommerce-inventory-service"
+    },
+    "payload": {
+      "type": "object",
+      "required": [
+        "reservationId",
+        "orderId"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "reservationId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "orderId": {
+          "type": "string",
+          "format": "uuid"
+        }
+      }
+    }
+  }
+}

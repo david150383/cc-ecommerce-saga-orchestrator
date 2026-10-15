@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.ecommerce.local/notification-service/notification-requested.v1.schema.json",
+  "title": "NotificationRequested v1",
+  "description": "Ask for a templated notification. data must not contain secrets; password-reset/verification links use the internal REST endpoint instead.",
+  "x-message-kind": "command",
+  "x-producer": [
+    "ecommerce-saga-orchestrator",
+    "ecommerce-order-service",
+    "ecommerce-payment-service"
+  ],
+  "x-consumers": [
+    "ecommerce-notification-service"
+  ],
+  "x-channel": "SQS notification-commands",
+  "$ref": "../common/envelope.v1.schema.json",
+  "properties": {
+    "messageKind": {
+      "const": "command"
+    },
+    "messageType": {
+      "const": "NotificationRequested"
+    },
+    "messageVersion": {
+      "const": 1
+    },
+    "producer": {
+      "enum": [
+        "ecommerce-saga-orchestrator",
+        "ecommerce-order-service",
+        "ecommerce-payment-service"
+      ]
+    },
+    "payload": {
+      "type": "object",
+      "required": [
+        "recipientUserId",
+        "channel",
+        "templateKey",
+        "data"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "recipientUserId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "channel": {
+          "enum": [
+            "email",
+            "sms",
+            "push"
+          ]
+        },
+        "templateKey": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(\\.[a-z0-9-]+)*$"
+        },
+        "locale": {
+          "type": "string",
+          "pattern": "^[a-z]{2}(-[A-Z]{2})?$",
+          "default": "en"
+        },
+        "data": {
+          "type": "object",
+          "maxProperties": 50
+        }
+      }
+    },
+    "idempotencyKey": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "description": "Required: one notification per key and channel."
+    }
+  }
+}

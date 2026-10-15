@@ -1,0 +1,17 @@
+{
+  "messageId": "0192a1b2-0000-7000-8000-00000000a001",
+  "messageKind": "event",
+  "messageType": "InventoryReservationReleased",
+  "messageVersion": 1,
+  "producer": "ecommerce-inventory-service",
+  "occurredAt": "2026-10-13T09:30:00.000Z",
+  "correlationId": "0192a1b2-0000-7000-8000-00000000c001",
+  "causationId": "0192a1b2-0000-7000-8000-00000000c002",
+  "sagaId": "0192a1b2-0000-7000-8000-00000000d001",
+  "idempotencyKey": null,
+  "payload": {
+    "orderId": "0192a1b2-0000-7000-8000-000000000201",
+    "reservationId": "0192a1b2-0000-7000-8000-000000000301",
+    "reason": "REQUESTED"
+  }
+}

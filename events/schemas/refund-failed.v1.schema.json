@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.ecommerce.local/payment-service/refund-failed.v1.schema.json",
+  "title": "RefundFailed v1",
+  "description": "The provider rejected the refund, it could not be confirmed after retries, or the payment was not refundable (wrong status or amount).",
+  "x-message-kind": "event",
+  "x-producer": "ecommerce-payment-service",
+  "x-consumers": [
+    "ecommerce-saga-orchestrator"
+  ],
+  "x-channel": "SNS payment-events",
+  "$ref": "../common/envelope.v1.schema.json",
+  "properties": {
+    "messageKind": {
+      "const": "event"
+    },
+    "messageType": {
+      "const": "RefundFailed"
+    },
+    "messageVersion": {
+      "const": 1
+    },
+    "producer": {
+      "const": "ecommerce-payment-service"
+    },
+    "payload": {
+      "type": "object",
+      "required": [
+        "refundId",
+        "paymentId",
+        "orderId",
+        "failureCode"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "refundId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "paymentId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "orderId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "failureCode": {
+          "enum": [
+            "PROVIDER_REJECTED",
+            "UNCONFIRMED_AFTER_RETRIES",
+            "NOT_REFUNDABLE"
+          ]
+        }
+      }
+    }
+  }
+}

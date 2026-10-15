@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.ecommerce.local/inventory-service/inventory-reservation-release-requested.v1.schema.json",
+  "title": "InventoryReservationReleaseRequested v1",
+  "description": "Return reserved stock. reservationId may be null when the saga timed out before learning it; release then targets the order.",
+  "x-message-kind": "command",
+  "x-producer": "ecommerce-saga-orchestrator",
+  "x-consumers": [
+    "ecommerce-inventory-service"
+  ],
+  "x-channel": "SQS inventory-commands",
+  "$ref": "../common/envelope.v1.schema.json",
+  "properties": {
+    "messageKind": {
+      "const": "command"
+    },
+    "messageType": {
+      "const": "InventoryReservationReleaseRequested"
+    },
+    "messageVersion": {
+      "const": 1
+    },
+    "producer": {
+      "const": "ecommerce-saga-orchestrator"
+    },
+    "payload": {
+      "type": "object",
+      "required": [
+        "orderId",
+        "reservationId",
+        "reason"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "orderId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "reservationId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reason": {
+          "enum": [
+            "PAYMENT_FAILED",
+            "PAYMENT_TIMEOUT",
+            "RESERVATION_TIMEOUT",
+            "ORDER_CANCELLED",
+            "SAGA_COMPENSATION"
+          ]
+        }
+      }
+    }
+  }
+}

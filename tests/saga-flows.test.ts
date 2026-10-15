@@ -345,3 +345,40 @@ describe("saga events match this service's published schemas", () => {
     }
   });
 });
+
+describe("commands the saga sends match their receivers' published schemas", () => {
+  it("every command type, from real flows, validates against the vendored (receiver-owned) schema", async () => {
+    const schemasDir = join(import.meta.dirname, "..", "events", "schemas");
+    const ajv = new Ajv2020({ strict: true, strictTypes: false, allErrors: true });
+    addFormats.default(ajv);
+    ajv.addVocabulary(["x-producer", "x-consumers", "x-channel", "x-message-kind"]);
+    const byType = new Map<string, string>();
+    for (const f of readdirSync(schemasDir)) {
+      const schema = JSON.parse(readFileSync(join(schemasDir, f), "utf8"));
+      ajv.addSchema(schema);
+      if (schema["x-message-kind"] === "command") byType.set(schema.properties.messageType.const, schema.$id);
+    }
+
+    // Happy path: reserve → order transitions → confirm.
+    const ok = await toAwaitingPayment();
+    await ctx.engine.handleEvent(event(ok.sagaId, "PaymentSucceeded", {}));
+    await ctx.engine.handleEvent(event(ok.sagaId, "InventoryReservationConfirmed", {}));
+    // Declined payment: release the stock, cancel the order.
+    const declined = await toAwaitingPayment();
+    await ctx.engine.handleEvent(event(declined.sagaId, "PaymentFailed", { failureCode: "DECLINED" }));
+    // Paid, then the reservation is lost: refund.
+    const lost = await toAwaitingPayment();
+    await ctx.engine.handleEvent(event(lost.sagaId, "PaymentSucceeded", {}));
+    await ctx.engine.handleEvent(event(lost.sagaId, "InventoryReservationFailed", { reason: "RESERVATION_EXPIRED" }));
+
+    const commands = (await outbox()).filter((m) => m.kind !== "topic");
+    expect(new Set(commands.map((c) => c.type))).toEqual(new Set(["InventoryReservationRequested", "OrderStatusTransitionRequested", "InventoryReservationConfirmRequested", "InventoryReservationReleaseRequested", "RefundRequested"]));
+    for (const c of commands) {
+      const id = byType.get(c.type);
+      expect(id, `no published schema for ${c.type}`).toBeDefined();
+      const validate = ajv.getSchema(id!)!;
+      validate(c.envelope);
+      expect({ type: c.type, errors: validate.errors ?? [] }).toEqual({ type: c.type, errors: [] });
+    }
+  });
+});

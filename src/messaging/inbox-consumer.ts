@@ -7,7 +7,7 @@ import type { InboundEvent, SagaEngine } from "../saga/engine.js";
  * Tolerant reader: the saga validates only the envelope fields it uses. The event schemas belong
  * to their producers; unknown extra fields are ignored so producers can evolve additively.
  */
-const EventEnvelope = z.object({
+export const EventEnvelope = z.object({
   messageId: z.uuid(),
   messageKind: z.literal("event"),
   messageType: z.string().min(1),

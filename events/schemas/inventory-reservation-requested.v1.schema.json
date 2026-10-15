@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.ecommerce.local/inventory-service/inventory-reservation-requested.v1.schema.json",
+  "title": "InventoryReservationRequested v1",
+  "description": "Reserve stock for all lines of an order, atomically (all lines or none).",
+  "x-message-kind": "command",
+  "x-producer": "ecommerce-saga-orchestrator",
+  "x-consumers": [
+    "ecommerce-inventory-service"
+  ],
+  "x-channel": "SQS inventory-commands",
+  "$ref": "../common/envelope.v1.schema.json",
+  "properties": {
+    "messageKind": {
+      "const": "command"
+    },
+    "messageType": {
+      "const": "InventoryReservationRequested"
+    },
+    "messageVersion": {
+      "const": 1
+    },
+    "producer": {
+      "const": "ecommerce-saga-orchestrator"
+    },
+    "payload": {
+      "type": "object",
+      "required": [
+        "orderId",
+        "lines"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "orderId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "lines": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "items": {
+            "type": "object",
+            "required": [
+              "sku",
+              "quantity"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "sku": {
+                "type": "string",
+                "pattern": "^[A-Z0-9][A-Z0-9-]{2,63}$"
+              },
+              "quantity": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000
+              }
+            }
+          }
+        },
+        "ttlSeconds": {
+          "type": "integer",
+          "minimum": 60,
+          "maximum": 86400,
+          "default": 2700
+        }
+      }
+    }
+  }
+}

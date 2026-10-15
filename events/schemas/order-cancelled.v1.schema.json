@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.ecommerce.local/order-service/order-cancelled.v1.schema.json",
+  "title": "OrderCancelled v1",
+  "description": "The order is cancelled (terminal).",
+  "x-message-kind": "event",
+  "x-producer": "ecommerce-order-service",
+  "x-consumers": [
+    "ecommerce-saga-orchestrator",
+    "ecommerce-notification-service"
+  ],
+  "x-channel": "SNS order-events",
+  "$ref": "../common/envelope.v1.schema.json",
+  "properties": {
+    "messageKind": {
+      "const": "event"
+    },
+    "messageType": {
+      "const": "OrderCancelled"
+    },
+    "messageVersion": {
+      "const": 1
+    },
+    "producer": {
+      "const": "ecommerce-order-service"
+    },
+    "payload": {
+      "type": "object",
+      "required": [
+        "orderId",
+        "customerId",
+        "previousStatus",
+        "reason"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "orderId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "customerId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "previousStatus": {
+          "enum": [
+            "PENDING",
+            "INVENTORY_RESERVING",
+            "INVENTORY_RESERVED",
+            "PAYMENT_PENDING",
+            "PAYMENT_PROCESSING",
+            "PAYMENT_SUCCEEDED",
+            "CONFIRMED",
+            "PROCESSING",
+            "SHIPPED",
+            "DELIVERED",
+            "CANCELLATION_PENDING",
+            "CANCELLED",
+            "FAILED",
+            "REFUND_PENDING",
+            "REFUNDED"
+          ]
+        },
+        "reason": {
+          "enum": [
+            "OUT_OF_STOCK",
+            "PAYMENT_FAILED",
+            "PAYMENT_TIMEOUT",
+            "CUSTOMER_REQUESTED",
+            "ADMIN",
+            "SYSTEM"
+          ]
+        }
+      }
+    }
+  }
+}

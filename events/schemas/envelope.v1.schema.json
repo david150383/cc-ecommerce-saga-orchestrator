@@ -1,6 +1,6 @@
 {
+  "$id": "https://schemas.ecommerce.local/common/envelope.v1.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://schemas.ecommerce.local/saga-orchestrator/envelope.v1.schema.json",
   "title": "Message envelope v1",
   "description": "Common envelope for every event and command. COPIED into each producing repository until ecommerce-contracts exists (Phase 6). Keep copies identical by hand.",
   "type": "object",

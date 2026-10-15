@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.ecommerce.local/order-service/order-confirmed.v1.schema.json",
+  "title": "OrderConfirmed v1",
+  "description": "Payment captured and stock committed; the order is confirmed.",
+  "x-message-kind": "event",
+  "x-producer": "ecommerce-order-service",
+  "x-consumers": [
+    "ecommerce-saga-orchestrator",
+    "ecommerce-notification-service"
+  ],
+  "x-channel": "SNS order-events",
+  "$ref": "../common/envelope.v1.schema.json",
+  "properties": {
+    "messageKind": {
+      "const": "event"
+    },
+    "messageType": {
+      "const": "OrderConfirmed"
+    },
+    "messageVersion": {
+      "const": 1
+    },
+    "producer": {
+      "const": "ecommerce-order-service"
+    },
+    "payload": {
+      "type": "object",
+      "required": [
+        "orderId",
+        "customerId",
+        "total"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "orderId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "customerId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "total": {
+          "type": "object",
+          "description": "Integer minor units + ISO 4217 currency. Never floating point.",
+          "required": [
+            "amountMinor",
+            "currency"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "amountMinor": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "currency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$"
+            }
+          }
+        }
+      }
+    }
+  }
+}

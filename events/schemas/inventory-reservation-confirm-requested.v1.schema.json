@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.ecommerce.local/inventory-service/inventory-reservation-confirm-requested.v1.schema.json",
+  "title": "InventoryReservationConfirmRequested v1",
+  "description": "Convert a reservation into a permanent stock deduction (payment succeeded).",
+  "x-message-kind": "command",
+  "x-producer": "ecommerce-saga-orchestrator",
+  "x-consumers": [
+    "ecommerce-inventory-service"
+  ],
+  "x-channel": "SQS inventory-commands",
+  "$ref": "../common/envelope.v1.schema.json",
+  "properties": {
+    "messageKind": {
+      "const": "command"
+    },
+    "messageType": {
+      "const": "InventoryReservationConfirmRequested"
+    },
+    "messageVersion": {
+      "const": 1
+    },
+    "producer": {
+      "const": "ecommerce-saga-orchestrator"
+    },
+    "payload": {
+      "type": "object",
+      "required": [
+        "reservationId",
+        "orderId"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "reservationId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "orderId": {
+          "type": "string",
+          "format": "uuid"
+        }
+      }
+    }
+  }
+}

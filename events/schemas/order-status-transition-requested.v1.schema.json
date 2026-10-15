@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.ecommerce.local/order-service/order-status-transition-requested.v1.schema.json",
+  "title": "OrderStatusTransitionRequested v1",
+  "description": "Move an order to a new status. The Order Service validates the transition and rejects invalid ones.",
+  "x-message-kind": "command",
+  "x-producer": "ecommerce-saga-orchestrator",
+  "x-consumers": [
+    "ecommerce-order-service"
+  ],
+  "x-channel": "SQS order-commands.fifo",
+  "$ref": "../common/envelope.v1.schema.json",
+  "properties": {
+    "messageKind": {
+      "const": "command"
+    },
+    "messageType": {
+      "const": "OrderStatusTransitionRequested"
+    },
+    "messageVersion": {
+      "const": 1
+    },
+    "producer": {
+      "const": "ecommerce-saga-orchestrator"
+    },
+    "payload": {
+      "type": "object",
+      "required": [
+        "orderId",
+        "toStatus"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "orderId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "toStatus": {
+          "enum": [
+            "PENDING",
+            "INVENTORY_RESERVING",
+            "INVENTORY_RESERVED",
+            "PAYMENT_PENDING",
+            "PAYMENT_PROCESSING",
+            "PAYMENT_SUCCEEDED",
+            "CONFIRMED",
+            "PROCESSING",
+            "SHIPPED",
+            "DELIVERED",
+            "CANCELLATION_PENDING",
+            "CANCELLED",
+            "FAILED",
+            "REFUND_PENDING",
+            "REFUNDED"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 200
+        }
+      }
+    }
+  }
+}

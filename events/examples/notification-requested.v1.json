@@ -1,0 +1,22 @@
+{
+  "messageId": "0192a1b2-0000-7000-8000-00000000a001",
+  "messageKind": "command",
+  "messageType": "NotificationRequested",
+  "messageVersion": 1,
+  "producer": "ecommerce-saga-orchestrator",
+  "occurredAt": "2026-10-13T09:30:00.000Z",
+  "correlationId": "0192a1b2-0000-7000-8000-00000000c001",
+  "causationId": null,
+  "sagaId": null,
+  "idempotencyKey": "notification-requested:0192a1b2-0000-7000-8000-000000000201",
+  "payload": {
+    "recipientUserId": "0192a1b2-0000-7000-8000-000000000101",
+    "channel": "email",
+    "templateKey": "order.shipped",
+    "locale": "en",
+    "data": {
+      "orderId": "0192a1b2-0000-7000-8000-000000000201",
+      "trackingNumber": "DL123456789IN"
+    }
+  }
+}
