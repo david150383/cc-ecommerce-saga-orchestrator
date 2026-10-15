@@ -1,0 +1,91 @@
+# GENERATED from ecommerce-infrastructure/templates (scripts/generate-workflows.py). Do not edit here.
+#
+# Deploys this service to ONE environment: build (arm64, tagged with the commit SHA) → push to that
+# environment's ECR → run the migration task (must exit 0) → new task definition revision → update the
+# ECS service → wait for the rollout. A rollout the ECS circuit breaker rolls back fails this job.
+name: deploy-environment
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  id-token: write # OIDC: no AWS keys are stored anywhere
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    concurrency:
+      group: deploy-saga-orchestrator-${{ inputs.environment }}
+      cancel-in-progress: false # never interrupt a deployment halfway
+    env:
+      SERVICE: saga-orchestrator
+      FAMILY: ${{ vars.ENV_PREFIX }}-saga-orchestrator
+      CLUSTER: ${{ vars.CLUSTER_NAME }}
+      TAG: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build and push runtime + migrate images (linux/arm64)
+        env:
+          REPO: ${{ steps.ecr.outputs.registry }}/${{ vars.ENV_PREFIX }}/saga-orchestrator
+        run: |
+          set -euo pipefail
+          docker buildx build --platform linux/arm64 --target runtime -t "$REPO:$TAG" --push .
+          docker buildx build --platform linux/arm64 --target migrate -t "$REPO:$TAG-migrate" --push .
+          echo "IMAGE=$REPO:$TAG" >> "$GITHUB_ENV"
+
+      - name: Run database migrations (one-off task; must exit 0)
+        if: true
+        run: |
+          set -euo pipefail
+          td=$(aws ecs describe-task-definition --task-definition "$FAMILY-migrate" --query taskDefinition)
+          new=$(echo "$td" | jq --arg img "$IMAGE-migrate" '.containerDefinitions[0].image = $img
+            | {family, taskRoleArn, executionRoleArn, networkMode, containerDefinitions, volumes, requiresCompatibilities, cpu, memory, runtimePlatform}')
+          arn=$(aws ecs register-task-definition --cli-input-json "$new" --query taskDefinition.taskDefinitionArn --output text)
+          task=$(aws ecs run-task --cluster "$CLUSTER" --task-definition "$arn" --launch-type FARGATE \
+            --network-configuration "awsvpcConfiguration={subnets=[${{ vars.PRIVATE_SUBNETS }}],securityGroups=[${{ vars.TASKS_SECURITY_GROUP }}],assignPublicIp=DISABLED}" \
+            --query 'tasks[0].taskArn' --output text)
+          echo "migration task: $task"
+          aws ecs wait tasks-stopped --cluster "$CLUSTER" --tasks "$task"
+          code=$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$task" --query 'tasks[0].containers[0].exitCode' --output text)
+          echo "migration exit code: $code"
+          test "$code" = "0"
+
+      - name: Deploy the new revision and wait for the rollout
+        run: |
+          set -euo pipefail
+          td=$(aws ecs describe-task-definition --task-definition "$FAMILY" --query taskDefinition)
+          new=$(echo "$td" | jq --arg img "$IMAGE" '.containerDefinitions[0].image = $img
+            | {family, taskRoleArn, executionRoleArn, networkMode, containerDefinitions, volumes, requiresCompatibilities, cpu, memory, runtimePlatform}')
+          arn=$(aws ecs register-task-definition --cli-input-json "$new" --query taskDefinition.taskDefinitionArn --output text)
+          echo "new revision: $arn"
+          aws ecs update-service --cluster "$CLUSTER" --service "$SERVICE" --task-definition "$arn" >/dev/null
+          # Poll the rollout: the circuit breaker marks it FAILED (and rolls back) if tasks never get healthy.
+          for _ in $(seq 1 60); do
+            state=$(aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" \
+              --query "services[0].deployments[?taskDefinition=='$arn'].rolloutState | [0]" --output text)
+            echo "rollout: $state"
+            case "$state" in
+              COMPLETED) exit 0 ;;
+              FAILED) echo "::error::rollout failed; ECS rolled back to the previous revision"; exit 1 ;;
+            esac
+            sleep 15
+          done
+          echo "::error::rollout did not finish in 15 minutes"; exit 1

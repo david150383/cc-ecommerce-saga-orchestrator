@@ -1,0 +1,46 @@
+# GENERATED from ecommerce-infrastructure/templates (scripts/generate-workflows.py). Do not edit here.
+#
+# main → dev (automatic) → staging (automatic, after dev) → production (GitHub environment with required
+# reviewers: a human approves every production deployment). Each environment has its own AWS role,
+# assumable only by this repository in that environment (terraform/modules/github-oidc).
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-saga-orchestrator
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  dev:
+    needs: ci
+    uses: ./.github/workflows/deploy-environment.yml
+    with:
+      environment: dev
+    permissions:
+      contents: read
+      id-token: write
+
+  staging:
+    needs: dev
+    uses: ./.github/workflows/deploy-environment.yml
+    with:
+      environment: staging
+    permissions:
+      contents: read
+      id-token: write
+
+  production:
+    needs: staging
+    uses: ./.github/workflows/deploy-environment.yml
+    with:
+      environment: production
+    permissions:
+      contents: read
+      id-token: write
