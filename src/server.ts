@@ -22,7 +22,7 @@ const tokens = new ServiceTokenProvider({
 if (!env.SERVICE_CLIENT_SECRET) logger.warn("SERVICE_CLIENT_SECRET is not set: order and payment calls will fail and checkouts will not progress");
 
 const repo = new SagaRepository({
-  queues: { inventory: env.INVENTORY_COMMANDS_QUEUE_NAME, order: env.ORDER_COMMANDS_QUEUE_NAME, payment: env.PAYMENT_COMMANDS_QUEUE_NAME },
+  queues: { inventory: env.INVENTORY_COMMANDS_QUEUE_NAME, order: env.ORDER_COMMANDS_QUEUE_NAME, payment: env.PAYMENT_COMMANDS_QUEUE_NAME, notification: env.NOTIFICATION_COMMANDS_QUEUE_NAME },
   eventsTopicArn: env.SAGA_EVENTS_TOPIC_ARN,
 });
 const engine = new SagaEngine(

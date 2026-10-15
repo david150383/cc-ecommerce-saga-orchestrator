@@ -84,7 +84,7 @@ export type Input =
   | { kind: "dependency-failed"; detail: string }
   | { kind: "operator-resolved"; resolution: string };
 
-export type CommandTarget = "inventory" | "order" | "payment";
+export type CommandTarget = "inventory" | "order" | "payment" | "notification";
 
 export interface OutgoingCommand {
   target: CommandTarget;

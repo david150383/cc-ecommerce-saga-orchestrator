@@ -428,9 +428,13 @@ describe("commands the saga sends match their receivers' published schemas", () 
     const cancelled = await toCompleted();
     await ctx.engine.handleEvent(event(cancelled.sagaId, "OrderCancellationRequested", { orderId: cancelled.orderId, reason: "CUSTOMER_REQUESTED" }));
     await ctx.engine.handleEvent(event(cancelled.sagaId, "RefundSucceeded", { orderId: cancelled.orderId }));
+    // A refund that fails: manual review, and the customer is notified.
+    const review = await toCompleted();
+    await ctx.engine.handleEvent(event(review.sagaId, "OrderCancellationRequested", { orderId: review.orderId, reason: "CUSTOMER_REQUESTED" }));
+    await ctx.engine.handleEvent(event(review.sagaId, "RefundFailed", { orderId: review.orderId }));
 
     const commands = (await outbox()).filter((m) => m.kind !== "topic");
-    expect(new Set(commands.map((c) => c.type))).toEqual(new Set(["InventoryReservationRequested", "OrderStatusTransitionRequested", "InventoryReservationConfirmRequested", "InventoryReservationReleaseRequested", "RefundRequested", "InventoryReturnRequested"]));
+    expect(new Set(commands.map((c) => c.type))).toEqual(new Set(["InventoryReservationRequested", "OrderStatusTransitionRequested", "InventoryReservationConfirmRequested", "InventoryReservationReleaseRequested", "RefundRequested", "InventoryReturnRequested", "NotificationRequested"]));
     for (const c of commands) {
       const id = byType.get(c.type);
       expect(id, `no published schema for ${c.type}`).toBeDefined();

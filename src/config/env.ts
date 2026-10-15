@@ -44,6 +44,7 @@ const EnvSchema = z.object({
   INVENTORY_COMMANDS_QUEUE_NAME: z.string().default("local-ecommerce-inventory-commands"),
   ORDER_COMMANDS_QUEUE_NAME: z.string().default("local-ecommerce-order-commands.fifo"),
   PAYMENT_COMMANDS_QUEUE_NAME: z.string().default("local-ecommerce-payment-commands"),
+  NOTIFICATION_COMMANDS_QUEUE_NAME: z.string().default("local-ecommerce-notification-commands"),
   SAGA_EVENTS_TOPIC_ARN: z.string().default("arn:aws:sns:us-east-1:000000000000:local-ecommerce-saga-events"),
   OUTBOX_POLL_INTERVAL_MS: z.coerce.number().int().min(50).default(500),
   CONSUMER_WAIT_TIME_SECONDS: z.coerce.number().int().min(0).max(20).default(20),

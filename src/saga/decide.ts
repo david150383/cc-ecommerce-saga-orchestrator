@@ -375,6 +375,9 @@ class Decider {
   private manualReview(input: Input, reason: string): Decision {
     return this.to("MANUAL_REVIEW", input, {
       patch: { failureReason: reason.slice(0, 100) },
+      // Every way into review involves a payment, so the customer may have been charged: tell them a person
+      // is on it (the alert alone reaches only the operators). Only the order id travels, never the reason.
+      commands: this.saga.orderId ? [this.notifyCustomer("order.under-review")] : [],
       events: [
         {
           messageType: "SagaManualReviewRequired",
@@ -481,6 +484,15 @@ class Decider {
       // reservationId may be unknown (timeout before the answer): the Inventory Service then releases by order.
       payload: { orderId: this.saga.orderId, reservationId: this.saga.reservationId, reason },
       idempotencyKey: `${this.saga.id}:release`,
+    };
+  }
+
+  private notifyCustomer(templateKey: string): OutgoingCommand {
+    return {
+      target: "notification",
+      messageType: "NotificationRequested",
+      payload: { recipientUserId: this.saga.customerId, channel: "email", templateKey, data: { orderId: this.saga.orderId } },
+      idempotencyKey: `${this.saga.id}:notify:${templateKey}`,
     };
   }
 

@@ -210,7 +210,7 @@ describe("cancelling a paid order (OrderCancellationRequested)", () => {
     const s1 = paid("REFUNDING", { compensation: run(paid("COMPLETED"), cancelRequested()).patch.compensation! });
     const d = run(s1, ev("RefundFailed", { failureCode: "PROVIDER_REJECTED" }));
     expect(d.state).toBe("MANUAL_REVIEW");
-    expect(d.commands).toEqual([]);
+    expect(cmds(d)).toEqual(["notification:NotificationRequested"]); // the customer is told; no restock
     expect(d.events.map((e) => e.messageType)).toEqual(["SagaManualReviewRequired"]);
   });
 
@@ -242,6 +242,22 @@ describe("cancelling a paid order (OrderCancellationRequested)", () => {
     for (const state of ["AWAITING_PAYMENT", "CANCELLED", "MANUAL_REVIEW"] as const) {
       expect(run(paid(state), cancelRequested()).ignored).toBeDefined();
     }
+  });
+});
+
+describe("manual review tells the customer", () => {
+  it("entering MANUAL_REVIEW emails the customer that a person is checking the order (order id only)", () => {
+    const d = run(saga("CONFIRMING_INVENTORY", { stepAttempts: 2 }), { kind: "timeout" });
+    expect(d.state).toBe("MANUAL_REVIEW");
+    expect(d.commands).toEqual([
+      {
+        target: "notification",
+        messageType: "NotificationRequested",
+        payload: { recipientUserId: "cust-1", channel: "email", templateKey: "order.under-review", data: { orderId: "order-1" } },
+        idempotencyKey: "saga-1:notify:order.under-review",
+      },
+    ]);
+    expect(d.events.map((e) => e.messageType)).toEqual(["SagaManualReviewRequired"]);
   });
 });
 

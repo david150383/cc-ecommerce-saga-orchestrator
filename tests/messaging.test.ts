@@ -18,6 +18,7 @@ const names = {
   inventory: `t-${id}-inventory-commands`,
   order: `t-${id}-order-commands.fifo`,
   payment: `t-${id}-payment-commands`,
+  notification: `t-${id}-notification-commands`,
   inbox: `t-${id}-saga-inbox`,
   inboxDlq: `t-${id}-saga-inbox-dlq`,
   probe: `t-${id}-probe`,
@@ -61,6 +62,7 @@ afterAll(async () => {
 beforeAll(async () => {
   await sqs.send(new CreateQueueCommand({ QueueName: names.inventory }));
   await sqs.send(new CreateQueueCommand({ QueueName: names.payment }));
+  await sqs.send(new CreateQueueCommand({ QueueName: names.notification }));
   await sqs.send(new CreateQueueCommand({ QueueName: names.order, Attributes: { FifoQueue: "true" } }));
   await sqs.send(new CreateQueueCommand({ QueueName: names.inboxDlq }));
   await sqs.send(
@@ -81,7 +83,7 @@ beforeEach(async () => {
   await resetDatabase();
   ctx = await buildTestContext(
     { AWS_ENDPOINT_URL: endpoint, SAGA_INBOX_QUEUE_NAME: names.inbox, CONSUMER_WAIT_TIME_SECONDS: "1" },
-    { queues: { inventory: names.inventory, order: names.order, payment: names.payment }, eventsTopicArn: topicArn },
+    { queues: { inventory: names.inventory, order: names.order, payment: names.payment, notification: names.notification }, eventsTopicArn: topicArn },
   );
   workers = createWorkers(ctx.env, ctx.db, ctx.engine, ctx.logger); // not started: driven step by step
   for (const n of [names.inventory, names.order, names.payment, names.probe]) await drain(n, 0);
@@ -171,7 +173,7 @@ describe("startup: events that arrived during downtime win over deadlines", () =
   async function scenario(drainMs: string) {
     const live = await buildTestContext(
       { AWS_ENDPOINT_URL: endpoint, SAGA_INBOX_QUEUE_NAME: names.inbox, CONSUMER_WAIT_TIME_SECONDS: "1", MESSAGING_ENABLED: "true", TIMER_INTERVAL_MS: "50", STARTUP_DRAIN_MS: drainMs },
-      { queues: { inventory: names.inventory, order: names.order, payment: names.payment }, eventsTopicArn: topicArn },
+      { queues: { inventory: names.inventory, order: names.order, payment: names.payment, notification: names.notification }, eventsTopicArn: topicArn },
     );
     await drain(names.inbox, 0);
     const s = await checkout();
@@ -205,7 +207,7 @@ describe("startup: during the drain, retries progress but deadlines wait", () =>
   it("a failed payment-intent step is retried during the drain; an expired payment deadline is judged only after it", async () => {
     const live = await buildTestContext(
       { AWS_ENDPOINT_URL: endpoint, SAGA_INBOX_QUEUE_NAME: names.inbox, CONSUMER_WAIT_TIME_SECONDS: "1", MESSAGING_ENABLED: "true", TIMER_INTERVAL_MS: "50", STARTUP_DRAIN_MS: "3000" },
-      { queues: { inventory: names.inventory, order: names.order, payment: names.payment }, eventsTopicArn: topicArn },
+      { queues: { inventory: names.inventory, order: names.order, payment: names.payment, notification: names.notification }, eventsTopicArn: topicArn },
     );
     await drain(names.inbox, 0);
     // A: its payment-intent call failed (the Payment Service was down), retry due.

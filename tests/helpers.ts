@@ -83,7 +83,7 @@ export async function resetDatabase(): Promise<void> {
 }
 
 export const defaultDestinations: Destinations = {
-  queues: { inventory: "test-inventory-commands", order: "test-order-commands.fifo", payment: "test-payment-commands" },
+  queues: { inventory: "test-inventory-commands", order: "test-order-commands.fifo", payment: "test-payment-commands", notification: "test-notification-commands" },
   eventsTopicArn: "arn:aws:sns:us-east-1:000000000000:test-saga-events",
 };
 
