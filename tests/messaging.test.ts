@@ -1,9 +1,10 @@
 import { CreateTopicCommand, SNSClient, SubscribeCommand } from "@aws-sdk/client-sns";
 import { CreateQueueCommand, GetQueueAttributesCommand, ReceiveMessageCommand, SendMessageCommand, SQSClient } from "@aws-sdk/client-sqs";
 import request from "supertest";
-import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createWorkers } from "../src/messaging/runner.js";
 import { auth, buildTestContext, checkoutBody, event, expireDeadlines, newId, resetDatabase, stateOf } from "./helpers.js";
+import { deleteTestQueues, deleteTestTopics } from "./test-cleanup.js";
 
 // Runs against the local AWS emulator (Floci), with a private set of queues and a topic per run.
 const endpoint = process.env.TEST_AWS_ENDPOINT_URL ?? "http://localhost:4566";
@@ -51,6 +52,11 @@ async function drain(name: string, wait = 2) {
   }
   return out;
 }
+
+afterAll(async () => {
+  await deleteTestTopics(sns, `t-${id}-`);
+  await deleteTestQueues(sqs, `t-${id}-`);
+});
 
 beforeAll(async () => {
   await sqs.send(new CreateQueueCommand({ QueueName: names.inventory }));
